@@ -10,10 +10,15 @@ import { corsOptions } from './config/cors.js';
 import { env } from './config/env.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFound } from './middleware/notFound.js';
-import { globalLimiter } from './middleware/rateLimiter.js';
-import apiRoutes from './routes/index.js';
+import { createGlobalLimiter } from './middleware/rateLimiter.js';
+import { createApiRouter } from './routes/index.js';
 
-export function createApp() {
+/**
+ * @param {object} [options]
+ * @param {boolean} [options.selfRegistrationEnabled] override env.SELF_REGISTRATION_ENABLED
+ * @param {import('express').Router} [options.testRouter] mounted at /api/test (tests only)
+ */
+export function createApp(options = {}) {
   const app = express();
 
   // Behind Vercel rewrite + Render proxy in production; needed for correct req.ip / rate limiting.
@@ -31,7 +36,7 @@ export function createApp() {
   if (env.isDev) app.use(morgan('dev'));
   else if (env.isProd) app.use(morgan('combined'));
 
-  app.use('/api', globalLimiter, apiRoutes);
+  app.use('/api', createGlobalLimiter(), createApiRouter(options));
 
   app.use(notFound);
   app.use(errorHandler);

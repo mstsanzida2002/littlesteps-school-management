@@ -1,13 +1,22 @@
 import { Router } from 'express';
 
+import { createAuthRouter } from './auth.routes.js';
 import healthRoutes from './health.routes.js';
+import { createUserRouter } from './user.routes.js';
 
-const router = Router();
+/**
+ * Builds the /api router. A factory (not a module singleton) so each app instance gets fresh
+ * rate-limit counters and options (e.g. tests toggling self-registration).
+ */
+export function createApiRouter({ selfRegistrationEnabled, testRouter } = {}) {
+  const router = Router();
 
-router.use('/health', healthRoutes);
+  router.use('/health', healthRoutes);
+  router.use('/auth', createAuthRouter({ selfRegistrationEnabled }));
+  router.use('/users', createUserRouter());
 
-// Feature routers are mounted here as they are built, e.g.:
-// router.use('/auth', authRoutes);
-// router.use('/users', userRoutes);
+  // Test-only routes (never passed in production code).
+  if (testRouter) router.use('/test', testRouter);
 
-export default router;
+  return router;
+}

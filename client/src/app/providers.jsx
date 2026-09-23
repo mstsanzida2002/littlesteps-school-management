@@ -1,6 +1,7 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { lazy, Suspense } from 'react';
 
+import AuthProvider from '../features/auth/components/AuthProvider.jsx';
 import { queryClient } from './queryClient.js';
 
 // Devtools are code-split and only loaded in development.
@@ -13,7 +14,7 @@ const ReactQueryDevtools = import.meta.env.DEV
 export function AppProviders({ children }) {
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <AuthProvider>{children}</AuthProvider>
       <Suspense fallback={null}>
         <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-left" />
       </Suspense>

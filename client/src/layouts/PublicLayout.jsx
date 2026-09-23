@@ -2,9 +2,12 @@ import { Suspense } from 'react';
 import { Link, Outlet } from 'react-router';
 
 import { Spinner } from '../components/ui/Spinner.jsx';
-import { APP_NAME, ROUTES } from '../config/constants.js';
+import { APP_NAME, ROLE_HOME, ROUTES } from '../config/constants.js';
+import { useAuth } from '../features/auth/hooks/useAuth.js';
 
 export default function PublicLayout() {
+  const { user } = useAuth();
+
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="border-b border-slate-200 bg-white">
@@ -13,10 +16,10 @@ export default function PublicLayout() {
             {APP_NAME}
           </Link>
           <Link
-            to={ROUTES.LOGIN}
+            to={user ? ROLE_HOME[user.role] : ROUTES.LOGIN}
             className="rounded-lg bg-brand-600 px-4 py-2 font-semibold text-white hover:bg-brand-700"
           >
-            Log in
+            {user ? 'My dashboard' : 'Log in'}
           </Link>
         </div>
       </header>

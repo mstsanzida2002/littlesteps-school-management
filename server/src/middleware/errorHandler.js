@@ -30,8 +30,7 @@ function normalizeError(err) {
     );
   }
 
-  if (err?.name === 'JsonWebTokenError') return ApiError.unauthorized('Invalid token');
-  if (err?.name === 'TokenExpiredError') return ApiError.unauthorized('Token expired');
+  // JWT (jose) errors are translated to 401s in services/token.service.js#verifyAccessToken.
 
   // Malformed JSON body from express.json()
   if (err?.type === 'entity.parse.failed') return ApiError.badRequest('Malformed JSON body');

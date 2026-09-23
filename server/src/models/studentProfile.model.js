@@ -1,29 +1,11 @@
 import mongoose from 'mongoose';
 
-import { baseSchemaOptions, optionalEmail, phone, ref, schoolDate } from './helpers/schemaTypes.js';
+import { GENDERS } from '../config/constants.js';
+import { guardianSchema } from './helpers/guardian.js';
+import { baseSchemaOptions, ref, schoolDate } from './helpers/schemaTypes.js';
 
-export const GENDERS = Object.freeze(['male', 'female']);
-export const GUARDIAN_RELATIONS = Object.freeze([
-  'father',
-  'mother',
-  'grandfather',
-  'grandmother',
-  'uncle',
-  'aunt',
-  'sibling',
-  'other',
-]);
-
-const guardianSchema = new mongoose.Schema(
-  {
-    name: { type: String, required: true, trim: true, maxlength: 100 },
-    relation: { type: String, enum: GUARDIAN_RELATIONS, required: true },
-    phone: phone({ required: true }),
-    email: optionalEmail(),
-    address: { type: String, trim: true, maxlength: 300 },
-  },
-  { _id: false },
-);
+export { GUARDIAN_RELATIONS } from './helpers/guardian.js';
+export { GENDERS } from '../config/constants.js';
 
 const studentProfileSchema = new mongoose.Schema(
   {

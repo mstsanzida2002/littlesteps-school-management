@@ -2,8 +2,9 @@ import { config } from 'dotenv';
 import { z } from 'zod';
 
 // Load server/.env (npm workspace scripts run with cwd = server/).
-// Real environment variables always win over the file.
-config({ quiet: true });
+// Real environment variables always win over the file. Tests never read .env so they stay
+// deterministic; vitest.config.js provides their values.
+if (process.env.NODE_ENV !== 'test') config({ quiet: true });
 
 const envSchema = z
   .object({
@@ -20,6 +21,22 @@ const envSchema = z
       .positive()
       .default(15 * 60 * 1000),
     RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
+
+    // --- Auth ---
+    JWT_ACCESS_SECRET: z
+      .string({ error: 'JWT_ACCESS_SECRET is required' })
+      .min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
+    ACCESS_TOKEN_TTL: z
+      .string()
+      .regex(/^\d+[smhd]$/, 'Use a duration like 15m')
+      .default('15m'),
+    REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(7),
+    // 'true'/'false' strings (z.coerce.boolean would treat 'false' as true).
+    SELF_REGISTRATION_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+    BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(15).default(12),
   })
   .superRefine((val, ctx) => {
     if (val.NODE_ENV === 'production' && !val.MONGODB_URI) {

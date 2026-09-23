@@ -1,9 +1,24 @@
 import mongoose from 'mongoose';
 
-import { ACCOUNT_STATUS, ROLES } from '../config/constants.js';
-import { baseSchemaOptions, optionalEmail, phone, ref } from './helpers/schemaTypes.js';
+import { ACCOUNT_STATUS, GENDERS, ROLES } from '../config/constants.js';
+import { guardianSchema } from './helpers/guardian.js';
+import { baseSchemaOptions, optionalEmail, phone, ref, schoolDate } from './helpers/schemaTypes.js';
 
 export const USERNAME_RE = /^[a-z0-9._-]{3,32}$/;
+
+// Details captured by self-registration (FR-AUTH-06). A StudentProfile needs roll number,
+// section and session, which the admin assigns on approval, so these live here until then.
+const registrationSchema = new mongoose.Schema(
+  {
+    guardian: { type: guardianSchema, required: true },
+    dateOfBirth: schoolDate({ required: false }),
+    gender: { type: String, enum: GENDERS },
+    requestedClassId: ref('Class', { required: false }),
+    note: { type: String, trim: true, maxlength: 500 },
+    submittedAt: { type: Date, default: Date.now },
+  },
+  { _id: false },
+);
 
 const userSchema = new mongoose.Schema(
   {
@@ -30,12 +45,17 @@ const userSchema = new mongoose.Schema(
     createdBy: ref('User', { required: false }),
     lastLoginAt: Date,
     passwordChangedAt: Date,
+    // Incremented to invalidate every session at once (password change/reset, suspension).
+    // Access tokens carry it as `tv`; authenticate rejects a mismatch.
+    tokenVersion: { type: Number, default: 0, min: 0 },
+    registration: { type: registrationSchema, default: undefined },
   },
   {
     ...baseSchemaOptions,
     toJSON: {
       transform: (_doc, ret) => {
         delete ret.passwordHash;
+        delete ret.tokenVersion;
         delete ret.__v;
         return ret;
       },

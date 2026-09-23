@@ -1,13 +1,23 @@
 import { Suspense, useState } from 'react';
-import { Link, NavLink, Outlet } from 'react-router';
+import { Link, NavLink, Outlet, useNavigate } from 'react-router';
 
 import { Spinner } from '../components/ui/Spinner.jsx';
 import { APP_NAME, NAV_ITEMS, ROUTES } from '../config/constants.js';
+import { useAuth } from '../features/auth/hooks/useAuth.js';
 
 /** Shared shell for admin / teacher / student areas. Sidebar on desktop, drawer on mobile. */
 export default function DashboardLayout({ role }) {
   const [open, setOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const items = NAV_ITEMS[role] ?? [];
+
+  const onLogout = async () => {
+    setLoggingOut(true);
+    await logout();
+    navigate(ROUTES.LOGIN, { replace: true });
+  };
 
   return (
     <div className="min-h-dvh lg:flex">
@@ -70,8 +80,23 @@ export default function DashboardLayout({ role }) {
               <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
             </svg>
           </button>
-          {/* TODO(auth/notifications): user menu + notification bell with unread count */}
-          <div className="ml-auto" />
+          {/* TODO(notifications): bell with unread count */}
+          <div className="ml-auto flex items-center gap-3">
+            {user && (
+              <div className="text-right leading-tight">
+                <p className="font-bold text-slate-800">{user.name}</p>
+                <p className="text-sm text-slate-500 capitalize">{user.role}</p>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={onLogout}
+              disabled={loggingOut}
+              className="rounded-lg border border-slate-300 px-3 py-2 font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+            >
+              {loggingOut ? 'Logging out…' : 'Log out'}
+            </button>
+          </div>
         </header>
         <main className="flex-1 p-4 sm:p-6">
           <Suspense fallback={<Spinner />}>

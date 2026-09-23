@@ -9,9 +9,13 @@ _brief_ (requirements + the structure a full IEEE-830 SRS should follow), not th
 
 ## Status
 
-Foundation plus data layer: server boots, `/api/health` works, client shell + routing + data
-layer are in place, all 17 Mongoose models exist with tests, and a dev seed script is available.
-No auth or feature endpoints yet.
+Foundation, data layer and authentication are done:
+
+- The server boots and `/api/health` works; the client shell, routing and data layer are in place.
+- All Mongoose models exist with tests, and a dev seed script is available.
+- **Auth (FR-AUTH-01…06)** is complete on server and client, including the RBAC and ownership
+  guards.
+- No feature endpoints yet (admin, teacher, student modules).
 
 ## Stack
 
@@ -20,7 +24,7 @@ No auth or feature endpoints yet.
 | Server  | Node ≥ 20.19, Express **4** (not 5 — `express-mongo-sanitize` needs Express 4), Mongoose, Zod |
 | Client  | React 19, Vite, Tailwind CSS v4 (`@tailwindcss/vite`), React Router, TanStack Query v5, Axios |
 | Tests   | Vitest + Supertest (server), mongodb-memory-server for integration tests                      |
-| Auth    | bcryptjs (password hashing); JWT to come with the auth feature                                |
+| Auth    | jose (JWT access tokens, HS256), bcryptjs (password hashing), opaque rotated refresh cookie   |
 | Tooling | npm workspaces, ESLint 9 flat config (per app), Prettier (root), concurrently                 |
 | Deploy  | Client → Vercel, Server → Render, DB → MongoDB Atlas                                          |
 
@@ -42,10 +46,11 @@ All dependencies are pinned to exact versions (no `^`/`~`); `.npmrc` sets `save-
 | **vitest**             | **5** | eslint / @eslint/js             | 9     |
 | supertest              | 7     | eslint-plugin-react-hooks       | 7     |
 | mongodb-memory-server  | 11    | prettier                        | 3     |
+| **jose**               | **6** | bcryptjs                        | 3     |
 
 Exact versions are in each `package.json`.
 
-**Check the installed API; don't rely on memory.** Mongoose 9, React Router 8, Vite 8 and Vitest 5
+**Check the installed API; don't rely on memory.** Mongoose 9, React Router 8, Vite 8, Vitest 5 and jose 6
 (also Zod 4, dotenv 18, express-rate-limit 8) are newer than most examples online and than older
 training data. Before using any API from them, check the installed package's type definitions
 (`node_modules/<pkg>/**/*.d.ts`) or its bundled docs/changelog. Don't copy patterns from older
@@ -103,7 +108,8 @@ server/src/
   services/        business logic + DB access
   models/          Mongoose schemas (*.model.js), index.js barrel, helpers/schemaTypes.js
   validators/      Zod schemas per feature
-  middleware/      errorHandler, notFound, rateLimiter (global + authLimiter), validate
+  middleware/      auth (authenticate, authorize), ownership guards, rateLimiter (per-app
+                   factories), validate, errorHandler, notFound
   utils/           ApiError, apiResponse, asyncHandler, logger, date, password
   seed/            dev seed script + static demo data (npm run seed)
 server/tests/      *.test.js; helpers/db.js = in-memory Mongo replica set
@@ -113,7 +119,7 @@ client/src/
   lib/             axios.js (the only Axios instance), tokenStore.js
   config/          constants.js (ROLES, ROUTES, ROLE_HOME, NAV_ITEMS, SCHOOL_TIMEZONE)
   layouts/         PublicLayout, AuthLayout, DashboardLayout (role prop)
-  routes/          ProtectedRoute, RoleRoute (pass-through until auth exists)
+  routes/          ProtectedRoute (signed in?), RoleRoute (role allowed?)
   components/ui/   shared presentational components
   features/<auth|admin|teacher|student>/{api,hooks,components,pages}
   hooks/ utils/ pages/   app-wide (non-feature) pieces
@@ -132,7 +138,8 @@ client/src/
   - error `{ success: false, message, errors?: [{ field, message, location? }], stack? }`
     (stack only in dev for 5xx). Produced solely by `middleware/errorHandler.js`.
 - **Errors:** `throw ApiError.notFound('Student not found')` etc. Mongoose Cast/Validation,
-  duplicate key 11000, Zod and JWT errors are translated centrally — don't catch them to reformat.
+  duplicate key 11000 and Zod errors are translated centrally — don't catch them to reformat.
+  JWT errors become 401s inside `verifyAccessToken`.
 - **Validation:** Zod schemas in `validators/<feature>.validator.js`, applied with
   `validate({ body, query, params })`. Parsed data is on `req.validated.*`.
 - **Env:** never read `process.env` outside `config/env.js`; add new vars to the schema and both
@@ -207,6 +214,12 @@ client/src/
 7. **Additions:**
    - `TeacherAssignment.schedule[]` (weekday + `HH:mm` slots) for FR-TCH-01 and "today's classes".
    - Settings adds `lateCountsAsPresent` (default true) and `weeklyOffDays` (default Fri, Sat).
+8. **Auth additions:**
+   - `User.tokenVersion` (session invalidation).
+   - A **`RefreshToken`** collection (hashed opaque tokens, `family`, TTL on `expiresAt`).
+   - `User.registration` (guardian, DOB, gender, requested class, note) for self-registered
+     Pending students. A StudentProfile needs roll number, section and session, so the admin
+     creates it on approval (FR-ADM-02/05) and clears `registration`.
 
 ## Attendance feature rules (for implementation)
 
@@ -226,14 +239,87 @@ client/src/
 - Attendance % = (present + late) ÷ recorded classes × 100 when `lateCountsAsPresent` is true;
   otherwise present ÷ recorded × 100.
 
-## Auth & deployment decision (same-origin API)
+## Auth (FR-AUTH-01…06)
 
-- **Access token:** short-lived JWT, kept **in memory only** (`client/src/lib/tokenStore.js`),
-  sent as `Authorization: Bearer`. Never in localStorage/sessionStorage.
-- **Refresh token:** HTTP-only, `Secure`, `SameSite=Lax` (or `Strict`) cookie scoped to
-  `/api/auth`, rotated on every refresh. On page load the client calls `/api/auth/refresh` to
-  recover a session. The Axios interceptor already does single-flight refresh on 401 once the auth
-  feature registers `setRefreshHandler()`.
+**Endpoints**
+
+| Endpoint                        | Access             | Notes                                                         |
+| ------------------------------- | ------------------ | ------------------------------------------------------------- |
+| `POST /api/auth/login`          | public             | `{ identifier, password }` → `{ accessToken, user }` + cookie |
+| `POST /api/auth/refresh`        | cookie             | rotates the refresh token → `{ accessToken, user }`           |
+| `POST /api/auth/logout`         | cookie             | revokes the current token; no access token needed             |
+| `GET /api/auth/me`              | signed in          |                                                               |
+| `PATCH /api/auth/password`      | signed in          | ends all sessions, then re-issues one for this device         |
+| `POST /api/auth/register`       | public, if enabled | Pending student + AuditLog; 404 when disabled                 |
+| `PATCH /api/users/:id/password` | admin              | ends that user's sessions + AuditLog (never the password)     |
+
+**Tokens**
+
+- **Access token:** a jose JWT (HS256, `typ: at+jwt`, with issuer and audience checked), valid for
+  `ACCESS_TOKEN_TTL` (15m). It carries `sub`, `role` and `tv` (tokenVersion). It is returned in
+  the body and kept **in memory only** (`client/src/lib/tokenStore.js`), never in
+  localStorage/sessionStorage.
+- **Refresh token:** 32 random bytes in the `ls_rt` cookie (`httpOnly`, `SameSite=Lax`,
+  `path=/api/auth`, `secure` in production, 7 days). Only its SHA-256 hash is stored in
+  `RefreshToken`.
+  - **Rotation:** every refresh atomically revokes the old token (`findOneAndUpdate` on
+    `revokedAt: null`) and issues a new one in the same `family`.
+  - **Reuse detection:** presenting a revoked token revokes the whole family, **except** a token
+    rotated less than `ROTATION_GRACE_MS` (10 s) ago. That is a multi-tab race, not theft: it
+    gets a 401 that **does not clear the cookie**, because the browser may already hold the
+    winning tab's newer token.
+
+**Ending sessions**
+
+- **`invalidateUserSessions(userId, reason)`** (token.service) increments `tokenVersion` and
+  revokes every refresh token for that user.
+- Call it on password change or reset, on suspension (with the status change), and anywhere else
+  a user's sessions must end immediately.
+- `authenticate` re-reads the user's status and `tokenVersion` on **every** request.
+
+**Login**
+
+- One generic message for an unknown identifier and a wrong password. A dummy bcrypt compare
+  equalises the timing.
+- Pending/Suspended get a specific 403, but only after the password is correct.
+
+**Rate limits** (in memory, per app instance; `req.ip` honours `TRUST_PROXY`)
+
+- Login: 5 failures / 15 min per IP + identifier, plus 30 failures / 15 min per IP.
+- Register: 5 / hour. Refresh: 60 / 15 min.
+- Running several instances would need a shared store.
+
+**Other rules**
+
+- Passwords: 8+ characters, a letter and a number (any script, so Bangla works), and **at most
+  72 UTF-8 bytes** (bcrypt truncates; a Bangla letter is 3 bytes). Validate new passwords with
+  `passwordPolicy` from `validators/auth.validator.js`.
+- **401 vs 403:** 401 = not signed in or session invalid (the client will try a refresh);
+  403 = signed in but not allowed. Wrong _current_ password on change → **400**, not 401.
+- **Guards** (`middleware/auth.js`, `middleware/ownership.js`; logic in
+  `services/access.service.js`):
+  - `authenticate`, then `authorize(...roles)`.
+  - `teacherOwnsAssignment(getScope?)`: assignment in the **active session**; admin passes;
+    student is denied.
+  - `studentOwnsRecord(getStudentId?)`: own record, an assigned teacher, or admin.
+  - Every feature route uses these, and services re-check with `canAccess*` when they load data
+    by other IDs.
+
+**Client** (`features/auth/session.js`)
+
+- `refreshSession()` is **single-flight** and shared by app start-up (`AuthProvider` →
+  `bootstrapSession()`) and the Axios 401 retry. StrictMode double effects and parallel 401s
+  therefore send one request.
+- On a 401 it **retries once after 400 ms**, because another tab may have just rotated the
+  cookie.
+- A failed refresh clears **local state only** (token → query cache → auth state). **Never call
+  `POST /auth/logout` automatically**: only the user's Log out button does. It then broadcasts
+  `{ type: 'logout' }` on the `littlesteps-auth` BroadcastChannel so every tab clears
+  immediately.
+- Logout always clears the whole TanStack Query cache, since phones are shared.
+
+## Same-origin API (deployment decision)
+
 - **The client always calls the relative path `/api`** — in dev via the Vite proxy
   (`client/vite.config.js`), in prod via a **Vercel rewrite** (`client/vercel.json`) that proxies
   `/api/*` to the Render service. The browser therefore sees the API as first-party, so the refresh
@@ -270,6 +356,13 @@ client/src/
   Indexes are built on start, so unique-index tests behave like production.
 - Every new service/endpoint gets tests, including a forbidden-access test for each role that
   should not reach it.
+- Auth test helpers (`tests/helpers/factories.js`): `createUser({ role, status, password })`,
+  `tokenFor(user)` (signs an access token without calling /login), `refreshCookieFrom(res)`.
+- Create a fresh `createApp()` per test when rate limits matter; limiters are per app.
+  `createApp({ testRouter })` mounts test-only routes at `/api/test`, and
+  `createApp({ selfRegistrationEnabled })` overrides the env flag.
+- Tests never read `server/.env`; `vitest.config.js` sets `JWT_ACCESS_SECRET` and
+  `BCRYPT_ROUNDS=4`.
 
 ## Don'ts
 
@@ -278,3 +371,7 @@ client/src/
 - No date math outside the date utilities.
 - Don't upgrade Express to 5 without replacing `express-mongo-sanitize`.
 - Don't implement a feature without checking its FR IDs in `docs/SRS.md`.
+- Don't store tokens in localStorage/sessionStorage. Don't call `POST /auth/logout` from error
+  handling, only from an explicit user action.
+- Don't add a protected route without `authenticate` + `authorize`, plus an ownership guard when
+  it is scoped to a class-section or a student.

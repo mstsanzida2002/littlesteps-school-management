@@ -36,8 +36,9 @@ api.interceptors.request.use((config) => {
 // --- Response: unwrap envelope, refresh on 401, normalize errors -----------
 
 /**
- * The auth feature registers a function that calls POST /auth/refresh and returns the
- * new access token (or throws). Until then, 401s are passed through unchanged.
+ * The auth feature (features/auth/session.js) registers a function that refreshes the
+ * session and returns the new access token (or throws). It is itself single-flight and shared
+ * with the app-load refresh, so parallel 401s — and app start-up — trigger one refresh.
  */
 let refreshHandler = null;
 let refreshPromise = null;
@@ -71,8 +72,10 @@ api.interceptors.response.use(
         const newToken = await refreshPromise;
         tokenStore.set(newToken);
         return api(original);
-      } catch {
-        tokenStore.clear();
+      } catch (refreshError) {
+        // Only a definitive "session invalid" ends the session locally — never on a network
+        // blip. This clears local state only; it never calls POST /auth/logout.
+        if (refreshError?.status === 401 || refreshError?.status === 403) tokenStore.clear();
         // Fall through to the normalized 401 below.
       }
     }

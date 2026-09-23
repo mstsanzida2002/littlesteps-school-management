@@ -7,6 +7,7 @@ export { Class } from './class.model.js';
 export { Meeting } from './meeting.model.js';
 export { Notice } from './notice.model.js';
 export { Notification } from './notification.model.js';
+export { RefreshToken } from './refreshToken.model.js';
 export { Result } from './result.model.js';
 export { Section } from './section.model.js';
 export { Settings } from './settings.model.js';

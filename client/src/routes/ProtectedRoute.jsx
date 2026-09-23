@@ -1,11 +1,18 @@
-import { Outlet } from 'react-router';
+import { Navigate, Outlet, useLocation } from 'react-router';
 
-/**
- * Gate for any authenticated area.
- * TODO(auth): if there is no session, try a silent refresh; on failure
- * <Navigate to={ROUTES.LOGIN} replace state={{ from: location }} />.
- * Currently a pass-through so the routing shape is fixed before auth exists.
- */
+import { FullPageLoader } from '../components/ui/FullPageLoader.jsx';
+import { ROUTES } from '../config/constants.js';
+import { useAuth } from '../features/auth/hooks/useAuth.js';
+import { AUTH_STATUS } from '../features/auth/session.js';
+
+/** Gate for any signed-in area; remembers where the user was going. */
 export default function ProtectedRoute() {
+  const { status } = useAuth();
+  const location = useLocation();
+
+  if (status === AUTH_STATUS.LOADING) return <FullPageLoader />;
+  if (status !== AUTH_STATUS.AUTHENTICATED) {
+    return <Navigate to={ROUTES.LOGIN} replace state={{ from: location }} />;
+  }
   return <Outlet />;
 }

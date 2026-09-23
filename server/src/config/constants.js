@@ -31,3 +31,5 @@ export const ATTENDANCE_STATUS = Object.freeze({
   ABSENT: 'absent',
   LATE: 'late',
 });
+
+export const GENDERS = Object.freeze(['male', 'female']);
