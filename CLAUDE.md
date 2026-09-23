@@ -9,8 +9,9 @@ _brief_ (requirements + the structure a full IEEE-830 SRS should follow), not th
 
 ## Status
 
-Foundation only: server boots, `/api/health` works, client shell + routing + data layer are in
-place. No models, auth, or features yet.
+Foundation plus data layer: server boots, `/api/health` works, client shell + routing + data
+layer are in place, all 17 Mongoose models exist with tests, and a dev seed script is available.
+No auth or feature endpoints yet.
 
 ## Stack
 
@@ -19,6 +20,7 @@ place. No models, auth, or features yet.
 | Server  | Node ≥ 20.19, Express **4** (not 5 — `express-mongo-sanitize` needs Express 4), Mongoose, Zod |
 | Client  | React 19, Vite, Tailwind CSS v4 (`@tailwindcss/vite`), React Router, TanStack Query v5, Axios |
 | Tests   | Vitest + Supertest (server), mongodb-memory-server for integration tests                      |
+| Auth    | bcryptjs (password hashing); JWT to come with the auth feature                                |
 | Tooling | npm workspaces, ESLint 9 flat config (per app), Prettier (root), concurrently                 |
 | Deploy  | Client → Vercel, Server → Render, DB → MongoDB Atlas                                          |
 
@@ -60,11 +62,33 @@ npm test               # server tests (Vitest)
 npm run lint           # ESLint both apps   (lint:fix to autofix)
 npm run format         # Prettier write     (format:check in CI)
 npm run build          # client production build
+npm run seed -- --reset   # wipe + reseed the dev database (see "Databases & seed")
 ```
 
 Env: copy `server/.env.example` → `server/.env`, `client/.env.example` → `client/.env.local`.
 `MONGODB_URI` is optional in development (API boots and `/api/health` reports
 `database: "disconnected"`); required in production (server exits on failure).
+
+## Databases & seed
+
+- One Atlas cluster, two databases, selected by the **database name in `MONGODB_URI`**:
+  - `littlesteps_dev`: development (local `server/.env`)
+  - `littlesteps`: production (Render env only)
+  - Tests never touch Atlas; they use mongodb-memory-server.
+- `npm run seed` (`server/src/seed/seed.js`, data in `seedData.js`):
+  - Prints the connected database name first.
+  - Refuses when `NODE_ENV=production`, and refuses **any** write unless the database name ends
+    in `_dev` or `_test`.
+  - Without `--reset` it refuses if data already exists; `--reset` clears every LittleSteps
+    collection first, so it can be re-run.
+  - Creates the active session, default Settings, 4 classes × sections A/B, 5 subjects, 1 admin,
+    4 class teachers (40 assignments, Sun–Thu timetable: section A 08:00, section B 10:45), 40
+    students with guardians, and whole-day attendance for the last 30 calendar days on school
+    days only. Today is left unmarked, and 4 students are deliberately below 75%.
+  - Dev logins: `admin` / `Admin@1234`, teachers `<first>.<last>` / `Teacher@1234`, students
+    `<class>-<section>-<roll>` (e.g. `kg1-a-03`) / `Student@1234`. The script prints them all.
+- The free M0 tier throttles bursts: keep bulk maintenance operations sequential, not
+  `Promise.all` over every collection.
 
 ## Layout
 
@@ -77,10 +101,11 @@ server/src/
   routes/          index.js mounts every feature router under /api
   controllers/     thin HTTP adapters
   services/        business logic + DB access
-  models/          Mongoose schemas
+  models/          Mongoose schemas (*.model.js), index.js barrel, helpers/schemaTypes.js
   validators/      Zod schemas per feature
   middleware/      errorHandler, notFound, rateLimiter (global + authLimiter), validate
-  utils/           ApiError, apiResponse, asyncHandler, logger, date
+  utils/           ApiError, apiResponse, asyncHandler, logger, date, password
+  seed/            dev seed script + static demo data (npm run seed)
 server/tests/      *.test.js; helpers/db.js = in-memory Mongo replica set
 
 client/src/
@@ -116,6 +141,19 @@ client/src/
   `user.controller.js`, `user.routes.js`, `user.validator.js`. Models `PascalCase` singular.
   Routes plural, kebab-case (`/api/teacher-assignments`).
 - **Lists** are paginated (`?page=&limit=`) and must hit indexed fields.
+- **Models** (`src/models/<name>.model.js`, exported from `src/models/index.js`):
+  - Build fields from `models/helpers/schemaTypes.js`: `ref()`, `schoolDate()` (every
+    calendar-date field), `phone()` (Bangladeshi mobile), `optionalEmail()`, `baseSchemaOptions`.
+  - Declare indexes with `schema.index()`. Rules that span documents (a section belongs to its
+    class, `teacherId` is a teacher, marks ≤ totalMarks) are enforced in services, not models.
+  - Mongoose 9: `pre` hooks get **no `next`**; throw (or return a rejected promise) to fail.
+    Use `returnDocument: 'after'`, not `new: true`.
+  - Enums shared across layers live in `config/constants.js`; model-specific enums are exported
+    from the model file (e.g. `ASSESSMENT_TYPES`).
+  - Read Settings only via `Settings.get()` (single document, created with defaults if missing).
+  - Hash passwords with `utils/password.js` (bcryptjs, cost 12). `passwordHash` is
+    `select: false` and removed by `toJSON`.
+  - AuditLog is append-only: updates throw.
 - Record admin overrides and critical changes in AuditLog (FR-ADM-09/11).
 
 ## Client conventions
@@ -146,6 +184,48 @@ client/src/
 - Children's data is sensitive: never return guardian contact details or other students' data to
   roles that don't need it.
 
+## Deviations from the SRS (data model)
+
+1. **All person references are `User._id`**: `studentId`, `teacherId`, `recipientId`,
+   `organizerId`, `editedBy`, `actorId`, etc. Profiles link back via a unique `userId`. Ownership
+   checks compare against `req.user.id` directly.
+2. **`username` is the required unique login; `email` is optional** (unique only when present,
+   via a partial index; `''`/`null` are normalized to undefined). Siblings may share a guardian
+   email. Login accepts username or email (FR-AUTH-01).
+3. **`sessionId` added** to StudentProfile, Attendance and Assessment: roll numbers and records
+   are per academic session. `StudentProfile` is currently per session; a separate
+   enrollment-history collection can come later if promotions need history.
+4. **Calendar-date fields** (`Attendance.date`, `Assessment.date`, `dateOfBirth`,
+   `admissionDate`, `joiningDate`, session start/end) use the `schoolDate()` field type: a setter
+   routes every value through `utils/date.js` (Asia/Dhaka → UTC midnight) and a validator rejects
+   anything not normalized. Setters also run on query filters, so `{ date: '2026-09-23' }` works.
+5. **Extra unique index `Result (assessmentId, studentId)`**.
+6. **Meeting invites** store both the organizer's selection (`invite.target` =
+   `students | sections | classes | all`, plus the chosen IDs) and the resolved
+   `inviteeStudentIds[]`, which is what queries and notifications use. `inviteeTeacherIds[]` covers
+   FR-TCH-14, and `responses[]` covers FR-STU-07.
+7. **Additions:**
+   - `TeacherAssignment.schedule[]` (weekday + `HH:mm` slots) for FR-TCH-01 and "today's classes".
+   - Settings adds `lateCountsAsPresent` (default true) and `weeklyOffDays` (default Fri, Sat).
+
+## Attendance feature rules (for implementation)
+
+- **Mark once per class-section per day:** the teacher marks a class-section once for the day,
+  and the service creates one Attendance record for **every subject that teacher has scheduled in
+  that class-section on that weekday** (from `TeacherAssignment.schedule`). Individual subject
+  records stay editable afterwards, through the normal edit flow with a mandatory reason and an
+  AttendanceEditLog. The schema doesn't change for this.
+- **One absence notification per student per school day:** absences are whole-day in practice,
+  so FR-NOT-01 notifications are **grouped**. Create ONE `absence` notification per student per
+  school day, listing the affected subjects. Don't create one per subject record.
+  - If further subjects are marked absent later that day, update that day's notification instead
+    of adding another.
+  - Corrections (FR-TCH-06) update or resolve that same grouped notification.
+- Only dates whose weekday is not in `Settings.weeklyOffDays` can be marked. Use
+  `weekdayOf()` from `utils/date.js`.
+- Attendance % = (present + late) ÷ recorded classes × 100 when `lateCountsAsPresent` is true;
+  otherwise present ÷ recorded × 100.
+
 ## Auth & deployment decision (same-origin API)
 
 - **Access token:** short-lived JWT, kept **in memory only** (`client/src/lib/tokenStore.js`),
@@ -173,7 +253,8 @@ client/src/
   `2026-09-23T00:00:00.000Z`). APIs exchange them as `'YYYY-MM-DD'` keys.
 - **All date logic goes through the shared date utility**:
   - server: `server/src/utils/date.js` — `toSchoolDate`, `todaySchoolDate`, `toDateKey`,
-    `isValidDateKey`, `addDays`, `monthRange`, `schoolDateKeyOf`
+    `isValidDateKey`, `addDays`, `monthRange`, `schoolDateKeyOf`, `weekdayOf`,
+    `atSchoolTime(schoolDate, 'HH:mm')` (wall-clock time in Dhaka → real instant)
   - client: `client/src/utils/date.js` — `todayDateKey`, `formatSchoolDate` (formats in UTC so the
     day never shifts), `formatDateTime` (real instants, shown in Asia/Dhaka)
   - Never use `new Date().setHours(0,0,0,0)`, `toLocaleDateString()` without a timeZone, or raw
@@ -185,7 +266,8 @@ client/src/
 - Unit/HTTP tests: import `createApp()` from `src/app.js` and use Supertest (no port binding).
 - Integration tests with a DB: `beforeAll(startTestDB)`, `afterEach(clearTestDB)`,
   `afterAll(stopTestDB)` from `tests/helpers/db.js` (single-node replica set, so transactions
-  work). The first run downloads a mongod binary (~600 MB, cached in `~/.cache/mongodb-binaries`).
+  work). The first run downloads a mongod binary (~780 MB, cached in `~/.cache/mongodb-binaries`).
+  Indexes are built on start, so unique-index tests behave like production.
 - Every new service/endpoint gets tests, including a forbidden-access test for each role that
   should not reach it.
 

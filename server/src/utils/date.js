@@ -9,7 +9,7 @@
  *    (e.g. 2026-09-23 in Dhaka → 2026-09-23T00:00:00.000Z).
  *  - A "date key" is the 'YYYY-MM-DD' string form used in APIs and query params.
  */
-import { SCHOOL_TIMEZONE } from '../config/constants.js';
+import { SCHOOL_TIMEZONE, WEEKDAYS } from '../config/constants.js';
 
 const DATE_KEY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -19,6 +19,17 @@ const schoolDateFormatter = new Intl.DateTimeFormat('en-CA', {
   year: 'numeric',
   month: '2-digit',
   day: '2-digit',
+});
+
+const schoolDateTimeFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: SCHOOL_TIMEZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
 });
 
 /** True if `value` is a real calendar date in 'YYYY-MM-DD' form (rejects 2026-02-30). */
@@ -73,6 +84,40 @@ export function isNormalizedSchoolDate(date) {
 export function addDays(schoolDate, days) {
   assertNormalized(schoolDate);
   return new Date(schoolDate.getTime() + days * MS_PER_DAY);
+}
+
+/**
+ * The real instant of a wall-clock time ('HH:mm') on a school date, in Asia/Dhaka.
+ * e.g. atSchoolTime(toSchoolDate('2026-09-23'), '08:00') → 2026-09-23T02:00:00.000Z
+ */
+export function atSchoolTime(schoolDate, hhmm) {
+  assertNormalized(schoolDate);
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(hhmm);
+  if (!match) throw new RangeError(`Invalid time (expected HH:mm): ${hhmm}`);
+  const wallClockAsUtc = schoolDate.getTime() + (Number(match[1]) * 60 + Number(match[2])) * 60_000;
+  return new Date(wallClockAsUtc - schoolOffsetMs(new Date(wallClockAsUtc)));
+}
+
+/** Offset of SCHOOL_TIMEZONE from UTC at a given instant, in ms (Dhaka: +6h, no DST). */
+function schoolOffsetMs(instant) {
+  const parts = Object.fromEntries(
+    schoolDateTimeFormatter.formatToParts(instant).map(({ type, value }) => [type, value]),
+  );
+  const wallClock = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour) % 24,
+    Number(parts.minute),
+    Number(parts.second),
+  );
+  return wallClock - Math.floor(instant.getTime() / 1000) * 1000;
+}
+
+/** Weekday name ('sunday'…'saturday') of a stored school date. */
+export function weekdayOf(schoolDate) {
+  assertNormalized(schoolDate);
+  return WEEKDAYS[schoolDate.getUTCDay()];
 }
 
 /**

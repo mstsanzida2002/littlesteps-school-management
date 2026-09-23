@@ -14,3 +14,20 @@ export const ACCOUNT_STATUS = Object.freeze({
 export const SCHOOL_TIMEZONE = 'Asia/Dhaka';
 
 export const JSON_BODY_LIMIT = '100kb';
+
+/** Index matches Date#getUTCDay() (0 = Sunday). */
+export const WEEKDAYS = Object.freeze([
+  'sunday',
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+]);
+
+export const ATTENDANCE_STATUS = Object.freeze({
+  PRESENT: 'present',
+  ABSENT: 'absent',
+  LATE: 'late',
+});

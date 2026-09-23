@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
   addDays,
+  atSchoolTime,
   isValidDateKey,
   monthRange,
   schoolDateKeyOf,
   toDateKey,
   toSchoolDate,
   todaySchoolDate,
+  weekdayOf,
 } from '../src/utils/date.js';
 
 describe('date utility (Asia/Dhaka, stored as UTC midnight)', () => {
@@ -36,6 +38,18 @@ describe('date utility (Asia/Dhaka, stored as UTC midnight)', () => {
     const { start, end } = monthRange(2026, 2);
     expect(start.toISOString()).toBe('2026-02-01T00:00:00.000Z');
     expect(end.toISOString()).toBe('2026-03-01T00:00:00.000Z');
+  });
+
+  it('converts a Dhaka wall-clock time on a school date to the real instant', () => {
+    const day = toSchoolDate('2026-09-23');
+    expect(atSchoolTime(day, '08:00').toISOString()).toBe('2026-09-23T02:00:00.000Z');
+    expect(atSchoolTime(day, '05:30').toISOString()).toBe('2026-09-22T23:30:00.000Z');
+    expect(() => atSchoolTime(day, '8am')).toThrow(RangeError);
+  });
+
+  it('returns the weekday of a school date', () => {
+    expect(weekdayOf(toSchoolDate('2026-09-25'))).toBe('friday');
+    expect(weekdayOf(toSchoolDate('2026-09-27'))).toBe('sunday');
   });
 
   it('refuses non-normalized dates', () => {
