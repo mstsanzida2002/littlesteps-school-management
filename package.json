@@ -23,7 +23,7 @@
     "format:check": "prettier --check ."
   },
   "devDependencies": {
-    "concurrently": "^10.0.5",
-    "prettier": "^3.9.9"
+    "concurrently": "10.0.5",
+    "prettier": "3.9.9"
   }
 }

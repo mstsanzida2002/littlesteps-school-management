@@ -22,6 +22,34 @@ place. No models, auth, or features yet.
 | Tooling | npm workspaces, ESLint 9 flat config (per app), Prettier (root), concurrently                 |
 | Deploy  | Client → Vercel, Server → Render, DB → MongoDB Atlas                                          |
 
+### Dependency versions (pinned)
+
+All dependencies are pinned to exact versions (no `^`/`~`); `.npmrc` sets `save-exact=true` and
+`package-lock.json` is committed. Upgrades are deliberate: bump the exact version, run
+`npm install`, then lint + test + build.
+
+| Package                | Major | Package                         | Major |
+| ---------------------- | ----- | ------------------------------- | ----- |
+| express                | 4     | react / react-dom               | 19    |
+| **mongoose**           | **9** | **react-router**                | **8** |
+| zod                    | 4     | **vite**                        | **8** |
+| dotenv                 | 18    | @vitejs/plugin-react            | 6     |
+| helmet                 | 8     | tailwindcss / @tailwindcss/vite | 4     |
+| express-rate-limit     | 8     | @tanstack/react-query           | 5     |
+| express-mongo-sanitize | 2     | axios                           | 1     |
+| **vitest**             | **5** | eslint / @eslint/js             | 9     |
+| supertest              | 7     | eslint-plugin-react-hooks       | 7     |
+| mongodb-memory-server  | 11    | prettier                        | 3     |
+
+Exact versions are in each `package.json`.
+
+**Check the installed API; don't rely on memory.** Mongoose 9, React Router 8, Vite 8 and Vitest 5
+(also Zod 4, dotenv 18, express-rate-limit 8) are newer than most examples online and than older
+training data. Before using any API from them, check the installed package's type definitions
+(`node_modules/<pkg>/**/*.d.ts`) or its bundled docs/changelog. Don't copy patterns from older
+majors, e.g. `react-router-dom` imports, Mongoose callback APIs, `max` instead of `limit`
+in express-rate-limit, or Zod 3's `error.errors`.
+
 ## Commands (run from repo root)
 
 ```bash
