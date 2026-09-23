@@ -1,0 +1,96 @@
+/**
+ * THE shared date utility. All calendar-date logic (attendance dates, "today",
+ * month ranges) must go through this module — never use `new Date()` arithmetic
+ * or `setHours(0,0,0,0)` directly in services/controllers.
+ *
+ * Convention:
+ *  - A "school date" is a calendar date interpreted in SCHOOL_TIMEZONE (Asia/Dhaka).
+ *  - It is stored in MongoDB as a Date at UTC midnight of that calendar date
+ *    (e.g. 2026-09-23 in Dhaka → 2026-09-23T00:00:00.000Z).
+ *  - A "date key" is the 'YYYY-MM-DD' string form used in APIs and query params.
+ */
+import { SCHOOL_TIMEZONE } from '../config/constants.js';
+
+const DATE_KEY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+const schoolDateFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: SCHOOL_TIMEZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/** True if `value` is a real calendar date in 'YYYY-MM-DD' form (rejects 2026-02-30). */
+export function isValidDateKey(value) {
+  if (typeof value !== 'string') return false;
+  const match = DATE_KEY_RE.exec(value);
+  if (!match) return false;
+  const [, y, m, d] = match.map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
+}
+
+/** Calendar date key ('YYYY-MM-DD') of an instant, as seen on a clock in Asia/Dhaka. */
+export function schoolDateKeyOf(instant) {
+  const date = instant instanceof Date ? instant : new Date(instant);
+  if (Number.isNaN(date.getTime())) throw new RangeError(`Invalid instant: ${instant}`);
+  const parts = Object.fromEntries(
+    schoolDateFormatter.formatToParts(date).map(({ type, value }) => [type, value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+/**
+ * Normalize input into a stored school date (UTC midnight).
+ *  - 'YYYY-MM-DD' string → that calendar date as-is (no timezone shift).
+ *  - Date / timestamp    → the Asia/Dhaka calendar date of that instant.
+ */
+export function toSchoolDate(input) {
+  if (typeof input === 'string' && DATE_KEY_RE.test(input)) {
+    if (!isValidDateKey(input)) throw new RangeError(`Invalid calendar date: ${input}`);
+    return new Date(`${input}T00:00:00.000Z`);
+  }
+  return new Date(`${schoolDateKeyOf(input)}T00:00:00.000Z`);
+}
+
+/** Today's school date (UTC midnight of today's date in Asia/Dhaka). */
+export function todaySchoolDate(now = new Date()) {
+  return toSchoolDate(now);
+}
+
+/** Stored school date → 'YYYY-MM-DD'. */
+export function toDateKey(schoolDate) {
+  assertNormalized(schoolDate);
+  return schoolDate.toISOString().slice(0, 10);
+}
+
+/** True if a Date is exactly UTC midnight (i.e. a correctly stored school date). */
+export function isNormalizedSchoolDate(date) {
+  return date instanceof Date && !Number.isNaN(date.getTime()) && date.getTime() % MS_PER_DAY === 0;
+}
+
+export function addDays(schoolDate, days) {
+  assertNormalized(schoolDate);
+  return new Date(schoolDate.getTime() + days * MS_PER_DAY);
+}
+
+/**
+ * Half-open range [start, end) of stored school dates for a calendar month.
+ * `month` is 1–12. Use as { date: { $gte: start, $lt: end } }.
+ */
+export function monthRange(year, month) {
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    throw new RangeError(`Invalid year/month: ${year}-${month}`);
+  }
+  return {
+    start: new Date(Date.UTC(year, month - 1, 1)),
+    end: new Date(Date.UTC(year, month, 1)),
+  };
+}
+
+function assertNormalized(date) {
+  if (!isNormalizedSchoolDate(date)) {
+    throw new RangeError(`Expected a normalized school date (UTC midnight), got: ${date}`);
+  }
+}

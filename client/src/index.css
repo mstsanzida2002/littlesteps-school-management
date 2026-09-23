@@ -1,0 +1,28 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Nunito', ui-sans-serif, system-ui, sans-serif;
+
+  --color-brand-50: #f0fdfa;
+  --color-brand-100: #ccfbf1;
+  --color-brand-500: #14b8a6;
+  --color-brand-600: #0d9488;
+  --color-brand-700: #0f766e;
+
+  /* Attendance status colours (SRS: colour-coded statuses) */
+  --color-present: #16a34a;
+  --color-absent: #dc2626;
+  --color-late: #d97706;
+}
+
+@layer base {
+  html {
+    /* Guardians mostly use phones: slightly larger, readable base text. */
+    font-size: 17px;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-slate-50 font-sans text-slate-800 antialiased;
+  }
+}

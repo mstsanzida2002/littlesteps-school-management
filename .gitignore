@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+Thumbs.db
+
+# Env files (keep the examples)
+.env
+.env.*
+!.env.example
+
+.vercel/
+.vscode/*
+!.vscode/extensions.json
+.idea/
