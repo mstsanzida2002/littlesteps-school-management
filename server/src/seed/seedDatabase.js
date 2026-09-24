@@ -272,6 +272,7 @@ export async function seedDatabase({ large = false, e2e = false, log = console.l
       sessionId: session._id,
       dateOfBirth: `${row.birthYear}-${pad(randomInt(1, 12))}-${pad(randomInt(1, 28))}`,
       gender: row.student.gender,
+      nickname: row.student.nickname,
       admissionDate: `${endYear - row.classIdx}-01-${pad(randomInt(2, 12))}`,
       guardian: {
         name: row.student[row.student.guardian],

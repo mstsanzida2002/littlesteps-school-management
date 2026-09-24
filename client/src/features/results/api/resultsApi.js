@@ -4,6 +4,7 @@ export const resultsKeys = {
   all: ['results'],
   list: (params) => ['results', 'list', params],
   detail: (id) => ['results', 'detail', id],
+  student: (studentId, params) => ['results', 'student', studentId, params],
 };
 
 export const resultsApi = {
@@ -19,4 +20,9 @@ export const resultsApi = {
   publish: (id) => api.patch(`/assessments/${id}/publish`),
   /** A published result: changes + reason */
   editResult: ({ resultId, ...body }) => api.patch(`/results/${resultId}`, body),
+  /** A student's published results, newest first: { subject, subjectId, marksObtained, percent,
+   *  grade, remarks, attendance, assessment: { _id, name, type, mode, totalMarks, date,
+   *  publishedAt, gradingScale } }. params: { subjectId?, assessmentId?, limit? } */
+  studentResults: (studentId, params) =>
+    api.get(`/results/student/${studentId}`, { params }).then((res) => res.data),
 };

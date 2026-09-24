@@ -8,21 +8,32 @@ import { ErrorState } from '../../../components/ui/ErrorState.jsx';
 import { PageHeader } from '../../../components/ui/PageHeader.jsx';
 import { Pagination } from '../../../components/ui/Pagination.jsx';
 import { SkeletonCard } from '../../../components/ui/Skeleton.jsx';
+import { ROLES } from '../../../config/constants.js';
+import { cn } from '../../../utils/cn.js';
 import { formatSchoolDate } from '../../../utils/date.js';
+import { useAuth } from '../../auth/hooks/useAuth.js';
 import { useNotices } from '../hooks/useNotices.js';
+import { text } from '../text/index.js';
 
-const AUDIENCE = { all: 'Everyone', teachers: 'Teachers', students: 'Guardians' };
 const BANGLA = /[ঀ-৿]/;
 
-/** Read-only notices for the signed-in role (FR-STU-08), pinned first. Same for every role. */
+/**
+ * Read-only notices for the signed-in role (FR-STU-08), pinned first. Guardians get warmer
+ * words and a pinned notice stands out with a coloured edge.
+ */
 export default function NoticesPage() {
   const [params, setParams] = useSearchParams();
+  const { user } = useAuth();
+  const guardian = user?.role === ROLES.STUDENT;
   const page = Number(params.get('page') ?? 1);
   const notices = useNotices({ page, limit: 10 });
 
   return (
     <>
-      <PageHeader title="Notices" description="News and reminders from the school." />
+      <PageHeader
+        title={text.title}
+        description={guardian ? text.guardianDescription : text.description}
+      />
       {notices.isError ? (
         <Card>
           <ErrorState
@@ -32,7 +43,7 @@ export default function NoticesPage() {
           />
         </Card>
       ) : notices.isPending ? (
-        <div aria-busy="true" aria-label="Loading notices" className="flex flex-col gap-3">
+        <div aria-busy="true" aria-label={text.loading} className="flex flex-col gap-3">
           <SkeletonCard />
           <SkeletonCard />
         </div>
@@ -41,7 +52,13 @@ export default function NoticesPage() {
           <ul className="flex flex-col gap-3">
             {notices.data.data.map((n) => (
               <li key={n._id}>
-                <Card as="article" className={n.isPinned ? 'border-cerise-200' : undefined}>
+                <Card
+                  as="article"
+                  className={cn(
+                    n.isPinned && 'border-cerise-200',
+                    guardian && n.isPinned && 'border-l-4 border-l-cerise-400',
+                  )}
+                >
                   <header className="flex flex-wrap items-start gap-2">
                     <h2
                       lang={BANGLA.test(n.title) ? 'bn' : undefined}
@@ -51,13 +68,15 @@ export default function NoticesPage() {
                     </h2>
                     {n.isPinned && (
                       <Badge tone="absent" icon={Pin} size="sm">
-                        Pinned
+                        {text.pinned}
                       </Badge>
                     )}
                   </header>
                   <p className="text-sm text-muted">
-                    {formatSchoolDate(n.publishedAt ?? n.createdAt, { weekday: true })} · For{' '}
-                    {AUDIENCE[n.audience]?.toLowerCase() ?? n.audience}
+                    {text.meta(
+                      formatSchoolDate(n.publishedAt ?? n.createdAt, { weekday: true }),
+                      text.audience[n.audience] ?? n.audience,
+                    )}
                   </p>
                   <p
                     lang={BANGLA.test(n.body) ? 'bn' : undefined}
@@ -76,11 +95,7 @@ export default function NoticesPage() {
         </>
       ) : (
         <Card>
-          <EmptyState
-            icon={Megaphone}
-            title="No notices right now"
-            description="New notices from the school will show here."
-          />
+          <EmptyState icon={Megaphone} title={text.empty} description={text.emptyHint} />
         </Card>
       )}
     </>

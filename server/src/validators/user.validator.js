@@ -9,7 +9,7 @@ import {
   passwordPolicy,
   usernameField,
 } from './auth.validator.js';
-import { dateKey, objectId } from './common.validator.js';
+import { dateKey, nicknameField, objectId, optionalNickname } from './common.validator.js';
 
 const name = z.string().trim().min(2).max(100);
 const rollNo = z.number().int().min(1).max(999);
@@ -36,6 +36,7 @@ export const createUserSchema = z.discriminatedUnion('role', [
       gender: z.enum(GENDERS).optional(),
       admissionDate: dateKey.optional(),
       guardian: guardianInput,
+      nickname: optionalNickname,
     }),
   }),
   z.object({
@@ -69,6 +70,8 @@ export const updateUserSchema = z
         gender: z.enum(GENDERS).optional(),
         admissionDate: dateKey.optional(),
         guardian: guardianInput.optional(),
+        // '' or null removes the nickname.
+        nickname: z.union([z.literal(''), z.null(), nicknameField]).optional(),
         employeeId: z.string().trim().min(1).max(20).optional(),
         qualification: z.string().trim().max(200).optional(),
         joiningDate: dateKey.optional(),
@@ -104,6 +107,7 @@ export const approveSchema = z.object({
   // Required if the registration did not include it.
   dateOfBirth: dateKey.optional(),
   admissionDate: dateKey.optional(),
+  nickname: optionalNickname,
 });
 
 export const rejectSchema = z.object({

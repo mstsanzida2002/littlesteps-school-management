@@ -44,3 +44,4 @@ const mutationHook = (mutationFn) =>
 export const useCreateMeeting = mutationHook(meetingsApi.create);
 export const useUpdateMeeting = mutationHook(meetingsApi.update);
 export const useCancelMeeting = mutationHook(meetingsApi.cancel);
+export const useRespondToMeeting = mutationHook(meetingsApi.respond);

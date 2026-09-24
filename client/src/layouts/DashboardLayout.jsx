@@ -7,9 +7,12 @@ import { MoreSheet } from '../components/layout/MoreSheet.jsx';
 import { activeNavItem } from '../components/layout/navMatch.js';
 import { Sidebar } from '../components/layout/Sidebar.jsx';
 import { Skeleton, SkeletonCard } from '../components/ui/Skeleton.jsx';
-import { NAV_ITEMS, ROLE_HOME, ROUTES } from '../config/constants.js';
+import { NAV_ITEMS, ROLE_HOME, ROLES, ROUTES } from '../config/constants.js';
 import { useAuth } from '../features/auth/hooks/useAuth.js';
+import { usePrefetchDashboard } from '../features/dashboard/hooks/useDashboard.js';
 import { useRealtimeInvalidation } from '../features/notifications/hooks/useRealtimeInvalidation.js';
+import { SWITCH_CHILD_LOGIN } from '../features/student/hooks/useSwitchChild.js';
+import { text as studentText } from '../features/student/text/index.js';
 
 const COLLAPSED_KEY = 'littlesteps.sidebar.collapsed';
 
@@ -48,6 +51,9 @@ export default function DashboardLayout({ role }) {
   const [loggingOut, setLoggingOut] = useState(false);
   // Pushed notifications refresh the data they are about (dashboards stay live).
   useRealtimeInvalidation();
+  // On the home page, fetch its data while the page's code downloads (slow networks). The
+  // admin home doesn't read the dashboard yet, so it is left out.
+  usePrefetchDashboard(role, role !== ROLES.ADMIN && pathname === ROLE_HOME[role]);
 
   const items = NAV_ITEMS[role] ?? [];
   const homeTo = ROLE_HOME[role];
@@ -63,11 +69,17 @@ export default function DashboardLayout({ role }) {
     }
   };
 
-  const onLogout = async () => {
+  const signOut = (to) => async () => {
     setLoggingOut(true);
     await logout();
-    navigate(ROUTES.LOGIN, { replace: true });
+    navigate(to, { replace: true });
   };
+  const onLogout = signOut(ROUTES.LOGIN);
+  // Guardians on a shared phone: log out and pick another child on the login page.
+  const switchChild =
+    role === ROLES.STUDENT
+      ? { onClick: signOut(SWITCH_CHILD_LOGIN), label: studentText.switchChild.action }
+      : undefined;
 
   return (
     <div className="min-h-dvh lg:flex">
@@ -86,6 +98,7 @@ export default function DashboardLayout({ role }) {
           homeTo={homeTo}
           onOpenAccount={() => setMoreOpen(true)}
           onLogout={onLogout}
+          switchChild={switchChild}
           loggingOut={loggingOut}
         />
         <main
@@ -110,6 +123,7 @@ export default function DashboardLayout({ role }) {
         items={items}
         user={user}
         onLogout={onLogout}
+        switchChild={switchChild}
         loggingOut={loggingOut}
       />
     </div>

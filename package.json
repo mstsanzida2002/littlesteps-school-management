@@ -25,7 +25,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "e2e": "npm run e2e -w e2e",
-    "e2e:screens": "npm run e2e:screens -w e2e"
+    "e2e:screens": "npm run e2e:screens -w e2e",
+    "e2e:perf": "npm run e2e:perf -w e2e"
   },
   "devDependencies": {
     "concurrently": "10.0.5",

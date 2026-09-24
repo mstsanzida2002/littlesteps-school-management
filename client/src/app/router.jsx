@@ -45,6 +45,15 @@ const MeetingsPage = lazy(() => import('../features/teacher/pages/MeetingsPage.j
 const MeetingFormPage = lazy(() => import('../features/teacher/pages/MeetingFormPage.jsx'));
 const MeetingDetailPage = lazy(() => import('../features/teacher/pages/MeetingDetailPage.jsx'));
 
+// Student (guardian) screens
+const ChildAttendancePage = lazy(() => import('../features/student/pages/ChildAttendancePage.jsx'));
+const ChildResultsPage = lazy(() => import('../features/student/pages/ChildResultsPage.jsx'));
+const ChildResultPage = lazy(() => import('../features/student/pages/ChildResultPage.jsx'));
+const ChildMeetingsPage = lazy(() => import('../features/student/pages/ChildMeetingsPage.jsx'));
+const ChildMeetingPage = lazy(() => import('../features/student/pages/ChildMeetingPage.jsx'));
+const ChildProfilePage = lazy(() => import('../features/student/pages/ChildProfilePage.jsx'));
+const ChildNotFound = lazy(() => import('../features/student/components/ChildNotFound.jsx'));
+
 // Development only: `import.meta.env.DEV` is false in production builds, so this branch and the
 // styleguide chunk are removed from the bundle entirely.
 const styleguideRoutes = import.meta.env.DEV
@@ -103,8 +112,15 @@ const teacherPages = [
 
 const studentPages = [
   { index: true, element: <StudentDashboardPage /> },
-  // Read-only and the same for every role; the rest of the student screens come next.
+  { path: 'attendance', element: <ChildAttendancePage /> },
+  { path: 'results', element: <ChildResultsPage /> },
+  { path: 'results/:assessmentId', element: <ChildResultPage /> },
+  { path: 'meetings', element: <ChildMeetingsPage /> },
+  { path: 'meetings/:meetingId', element: <ChildMeetingPage /> },
   { path: 'notices', element: <NoticesPage /> },
+  { path: 'profile', element: <ChildProfilePage /> },
+  // Any other address (a typo, an old link) stays inside the shell, in friendly words.
+  { path: '*', element: <ChildNotFound /> },
 ];
 
 export const router = createBrowserRouter([

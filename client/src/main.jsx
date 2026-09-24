@@ -14,8 +14,13 @@ import { preloadLoginLogo } from './components/brand/logoAssets.js';
 import { ROUTES } from './config/constants.js';
 import './index.css';
 
-// The app waits for the session check before it renders; fetch the login logo meanwhile.
+// The app waits for the session check before it renders; use that time. On /login, fetch the
+// logo. On the guardian's home page (often opened on slow mobile data), start downloading its
+// code now instead of after the session check.
 if (window.location.pathname === ROUTES.LOGIN) preloadLoginLogo();
+if (window.location.pathname === ROUTES.STUDENT) {
+  import('./features/student/pages/StudentDashboardPage.jsx').catch(() => {});
+}
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

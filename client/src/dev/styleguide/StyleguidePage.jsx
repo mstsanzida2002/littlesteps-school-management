@@ -15,6 +15,7 @@ import {
   NavigationSection,
   OverlaySection,
 } from './InteractiveSections.jsx';
+import { GuardianSection } from './GuardianSections.jsx';
 import { TeacherSection } from './TeacherSections.jsx';
 
 const LINKS = [
@@ -32,6 +33,7 @@ const LINKS = [
   ['identity', 'Avatars'],
   ['charts', 'Charts'],
   ['teacher', 'Teacher'],
+  ['guardian', 'Guardian'],
 ];
 
 /**
@@ -85,6 +87,7 @@ export default function StyleguidePage() {
         <IdentitySection />
         <ChartSection />
         <TeacherSection />
+        <GuardianSection />
       </main>
     </div>
   );

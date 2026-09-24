@@ -1,5 +1,5 @@
 import { ACCOUNT_STATUS, ERROR_CODES, ROLES } from '../config/constants.js';
-import { User } from '../models/index.js';
+import { StudentProfile, User } from '../models/index.js';
 import { ApiError } from '../utils/ApiError.js';
 import { hashPassword, verifyPassword } from '../utils/password.js';
 import { recordAudit } from './audit.service.js';
@@ -24,6 +24,17 @@ const STATUS_MESSAGES = {
 let dummyHashPromise;
 const getDummyHash = () => (dummyHashPromise ??= hashPassword('littlesteps-timing-equalizer'));
 
+/**
+ * The user as the client keeps it. Students also carry their nickname (null when unset): the
+ * guardian's screens and the remembered-accounts chips call the child by it.
+ */
+async function sessionUser(user) {
+  const json = user.toJSON();
+  if (user.role !== ROLES.STUDENT) return json;
+  const profile = await StudentProfile.findOne({ userId: user._id }).select('nickname').lean();
+  return { ...json, nickname: profile?.nickname ?? null };
+}
+
 /** POST /auth/login */
 export async function login({ identifier, password }, meta) {
   const key = identifier.trim().toLowerCase();
@@ -43,7 +54,7 @@ export async function login({ identifier, password }, meta) {
   await user.save();
 
   const session = await issueSession(user, meta);
-  return { user: user.toJSON(), ...session };
+  return { user: await sessionUser(user), ...session };
 }
 
 /** POST /auth/refresh */
@@ -56,7 +67,7 @@ export async function refresh(refreshToken, meta) {
     throw error;
   }
   const { user, ...session } = await rotateRefreshToken(refreshToken, meta);
-  return { user: user.toJSON(), ...session };
+  return { user: await sessionUser(user), ...session };
 }
 
 /** POST /auth/logout */
@@ -68,7 +79,7 @@ export function logout(refreshToken) {
 export async function getCurrentUser(userId) {
   const user = await User.findById(userId);
   if (!user) throw ApiError.unauthorized('Account no longer exists');
-  return user.toJSON();
+  return sessionUser(user);
 }
 
 /**
@@ -108,7 +119,7 @@ export async function changePassword(userId, { currentPassword, newPassword }, m
     meta,
   });
   const session = await issueSession(user, meta);
-  return { user: user.toJSON(), ...session };
+  return { user: await sessionUser(user), ...session };
 }
 
 /** PATCH /users/:id/password (admin): the user must choose a new password at next sign-in. */

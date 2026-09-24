@@ -12,6 +12,7 @@
  *     authenticate, studentOwnsRecord(), controller.summary,
  *   );
  */
+import { ROLES } from '../config/constants.js';
 import { canAccessClassSection, canAccessStudent } from '../services/access.service.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -37,8 +38,9 @@ export const teacherOwnsAssignment = (
   });
 
 /**
- * Admin: always. Student: only their own records. Teacher: only students in a class-section
- * assigned to them in the active session.
+ * Admin: always. Student: only their own records; anything else is 404, not 403, so another
+ * child's id is never confirmed. Teacher: only students in a class-section assigned to them in
+ * the active session.
  * @param getStudentId (req) => student's User id; defaults to :studentId (or :id).
  */
 export const studentOwnsRecord = (
@@ -49,6 +51,7 @@ export const studentOwnsRecord = (
 ) =>
   asyncHandler(async (req, res, next) => {
     if (!(await canAccessStudent(req.user, getStudentId(req)))) {
+      if (req.user.role === ROLES.STUDENT) throw ApiError.notFound('Not found');
       throw ApiError.forbidden("You do not have access to this student's records");
     }
     next();

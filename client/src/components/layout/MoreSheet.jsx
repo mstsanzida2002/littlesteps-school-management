@@ -1,4 +1,4 @@
-import { KeyRound, LogOut } from 'lucide-react';
+import { ArrowLeftRight, KeyRound, LogOut } from 'lucide-react';
 import { Link, NavLink } from 'react-router';
 
 import { ROLE_LABELS, ROUTES } from '../../config/constants.js';
@@ -9,8 +9,11 @@ import { Drawer } from '../ui/Drawer.jsx';
 
 const rowClasses = 'flex min-h-12 items-center gap-3 rounded-control px-3 font-semibold';
 
-/** Phones: the nav items not in the bottom bar, plus the account (name, role, password, log out). */
-export function MoreSheet({ open, onClose, items, user, onLogout, loggingOut }) {
+/**
+ * Phones: the nav items not in the bottom bar, plus the account (name, role, password, log out).
+ * `switchChild` ({ onClick, label }, guardians only) logs out and opens the child chooser.
+ */
+export function MoreSheet({ open, onClose, items, user, onLogout, switchChild, loggingOut }) {
   const secondary = items.filter((item) => !item.primary);
   return (
     <Drawer side="bottom" open={open} onClose={onClose} title="Menu">
@@ -56,6 +59,17 @@ export function MoreSheet({ open, onClose, items, user, onLogout, loggingOut }) 
           <KeyRound aria-hidden="true" className="size-5 text-brand-700" />
           Change password
         </Link>
+        {switchChild && (
+          <Button
+            variant="secondary"
+            icon={ArrowLeftRight}
+            onClick={switchChild.onClick}
+            disabled={loggingOut}
+            fullWidth
+          >
+            {switchChild.label}
+          </Button>
+        )}
         <Button variant="secondary" icon={LogOut} onClick={onLogout} loading={loggingOut} fullWidth>
           {loggingOut ? 'Logging out…' : 'Log out'}
         </Button>

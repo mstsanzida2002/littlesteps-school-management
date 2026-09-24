@@ -79,8 +79,10 @@ export async function studentSummary(studentId, query = {}) {
     student: {
       id: studentId,
       name: profile.userId.name,
+      nickname: profile.nickname ?? null,
       classSection: `${profile.classId.name}-${profile.sectionId.name}`,
       rollNo: profile.rollNo,
+      admissionDate: profile.admissionDate ? toDateKey(profile.admissionDate) : null,
     },
     session: activeSession.name,
     range: { from: query.from ?? null, to: query.to ?? null },

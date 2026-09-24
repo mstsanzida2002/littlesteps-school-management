@@ -122,7 +122,7 @@ describe('summary access', () => {
   it('student themselves, assigned teachers and admins only', async () => {
     const path = `/attendance/student/${ayaan._id}/summary`;
     expect((await apiAs(ayaan).get(path)).status).toBe(200);
-    expect((await apiAs(nusrat).get(path)).status).toBe(403);
+    expect((await apiAs(nusrat).get(path)).status).toBe(404); // another child: not found, never "forbidden"
     expect((await apiAs(school.teacher).get(path)).status).toBe(200);
     expect((await apiAs(school.admin).get(path)).status).toBe(200);
 

@@ -33,6 +33,15 @@ const mutationHook = (mutationFn) =>
     return useMutation({ mutationFn, onSuccess: invalidate });
   };
 
+/** Published results of a student (guardians: their own child). */
+export function useStudentResults(studentId, params = {}) {
+  return useQuery({
+    queryKey: resultsKeys.student(studentId, params),
+    queryFn: () => resultsApi.studentResults(studentId, params),
+    enabled: Boolean(studentId),
+  });
+}
+
 export const useCreateAssessment = mutationHook(resultsApi.create);
 export const useUpdateAssessment = mutationHook(resultsApi.update);
 export const useDeleteAssessment = mutationHook(resultsApi.remove);

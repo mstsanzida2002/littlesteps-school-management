@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { attendanceApi, attendanceKeys } from '../api/attendanceApi.js';
 
@@ -61,5 +61,7 @@ export function useStudentAttendanceHistory(studentId, params = {}) {
     queryKey: attendanceKeys.studentHistory(studentId, params),
     queryFn: () => attendanceApi.studentHistory(studentId, params),
     enabled: Boolean(studentId),
+    // Moving between months keeps the last month on screen until the next one arrives.
+    placeholderData: keepPreviousData,
   });
 }

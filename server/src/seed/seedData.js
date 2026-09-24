@@ -67,7 +67,8 @@ export const TEACHERS = [
 
 /**
  * 40 students = 4 classes × 2 sections × 5. Order: Playgroup A (5), Playgroup B (5), Nursery A…
- * `father`/`mother` are the guardians; `guardian` says who is the primary contact.
+ * `father`/`mother` are the guardians; `guardian` says who is the primary contact. A few have a
+ * `nickname` (what the child is called at home).
  */
 export const STUDENTS = [
   // Playgroup A
@@ -80,6 +81,7 @@ export const STUDENTS = [
   },
   {
     name: 'Nusrat Jahan Mim',
+    nickname: 'Mim',
     gender: 'female',
     father: 'Md. Jahangir Alam',
     mother: 'Rokeya Begum',
@@ -152,6 +154,7 @@ export const STUDENTS = [
   },
   {
     name: 'Tasnim Ara Oishi',
+    nickname: 'Oishi',
     gender: 'female',
     father: 'Md. Shahidul Islam',
     mother: 'Kohinoor Begum',
@@ -195,6 +198,7 @@ export const STUDENTS = [
   },
   {
     name: 'Prapti Saha',
+    nickname: 'Tuli',
     gender: 'female',
     father: 'Pradip Saha',
     mother: 'Rina Saha',
@@ -245,6 +249,7 @@ export const STUDENTS = [
   },
   {
     name: 'Tanvir Hossain Rafi',
+    nickname: 'Rafi',
     gender: 'male',
     father: 'Md. Mizanur Rahman',
     mother: 'Sharmin Akter',
@@ -325,6 +330,7 @@ export const STUDENTS = [
   // KG-2 B
   {
     name: 'Ramisa Anjum',
+    nickname: 'Rimi',
     gender: 'female',
     father: 'Md. Anisur Rahman',
     mother: 'Dilruba Yasmin',

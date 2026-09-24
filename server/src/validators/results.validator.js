@@ -84,5 +84,7 @@ export const editResultSchema = z
 export const assessmentIdParams = z.object({ assessmentId: objectId });
 export const studentResultsQuery = z.object({
   subjectId: objectId.optional(),
+  // One test (the guardian's test page); still published results only.
+  assessmentId: objectId.optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });

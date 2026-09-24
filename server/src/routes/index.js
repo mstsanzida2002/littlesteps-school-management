@@ -20,6 +20,7 @@ import {
   createSchoolSettingsRouter,
   createNoticeRouter,
   createResultRouter,
+  createStudentRouter,
 } from './feature.routes.js';
 import healthRoutes from './health.routes.js';
 import { createNotificationRouter } from './notification.routes.js';
@@ -61,6 +62,7 @@ export function createApiRouter({ selfRegistrationEnabled, rateLimits, testRoute
   router.use('/meetings', createMeetingRouter());
   router.use('/notices', createNoticeRouter());
   router.use('/dashboard', createDashboardRouter());
+  router.use('/students', createStudentRouter());
 
   // Test-only routes (never passed in production code).
   if (testRouter) router.use('/test', testRouter);

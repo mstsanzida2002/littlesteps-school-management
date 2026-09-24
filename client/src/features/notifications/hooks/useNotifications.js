@@ -15,7 +15,12 @@ function useNotificationMutation(mutationFn) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: notificationKeys.all }),
+    // Dashboards list unread notifications too.
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: notificationKeys.all }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
+      ]),
   });
 }
 

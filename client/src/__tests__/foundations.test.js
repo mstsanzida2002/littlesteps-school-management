@@ -65,12 +65,25 @@ describe('notification links', () => {
   const meeting = { type: 'meeting_invite', data: { meetingId: 'm1' } };
   it('opens the related screen for the role', () => {
     expect(notificationLink(meeting, 'teacher')).toBe('/teacher/meetings/m1');
-    expect(notificationLink(meeting, 'student')).toBe('/student/meetings');
+    expect(notificationLink(meeting, 'student')).toBe('/student/meetings/m1');
     expect(
       notificationLink({ type: 'notice', relatedEntity: { kind: 'Notice', id: 'n' } }, 'teacher'),
     ).toBe('/teacher/notices');
     expect(notificationLink({ type: 'absence' }, 'student')).toBe('/student/attendance');
     expect(notificationLink({ type: 'result_updated' }, 'student')).toBe('/student/results');
+    // Guardians land on the exact day / test.
+    expect(notificationLink({ type: 'absence', data: { date: '2026-09-23' } }, 'student')).toBe(
+      '/student/attendance?month=2026-09&day=2026-09-23',
+    );
+    expect(
+      notificationLink({ type: 'result_published', data: { assessmentId: 'a1' } }, 'student'),
+    ).toBe('/student/results/a1');
+    expect(
+      notificationLink(
+        { type: 'meeting_updated', data: { meetingId: 'm1', removed: true } },
+        'student',
+      ),
+    ).toBe('/student/meetings');
     // "No longer invited": the meeting is not theirs to open any more.
     expect(
       notificationLink(

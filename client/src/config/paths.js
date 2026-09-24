@@ -31,6 +31,19 @@ export const teacherPaths = {
   notices: () => '/teacher/notices',
 };
 
+export const studentPaths = {
+  dashboard: () => '/student',
+  attendance: ({ month, day } = {}) =>
+    withQuery('/student/attendance', { month: month ?? day?.slice(0, 7), day }),
+  results: ({ view } = {}) => withQuery('/student/results', { view }),
+  result: (assessmentId) => `/student/results/${assessmentId}`,
+  meetings: ({ when } = {}) => withQuery('/student/meetings', { when }),
+  meeting: (id) => `/student/meetings/${id}`,
+  notices: () => '/student/notices',
+  notifications: () => '/student/notifications',
+  profile: () => '/student/profile',
+};
+
 export const notificationsPath = (role) => `${ROLE_HOME[role] ?? ''}/notifications`;
 
 const id = (notification, key) =>
@@ -41,7 +54,7 @@ const id = (notification, key) =>
 
 /**
  * The screen a notification is about, for the signed-in role. Screens that are not built yet
- * (the student pages) are "coming soon" routes, so the link still lands somewhere sensible.
+ * (the admin pages) are "coming soon" routes, so the link still lands somewhere sensible.
  */
 export function notificationLink(notification, role) {
   const home = ROLE_HOME[role] ?? '/';
@@ -49,14 +62,21 @@ export function notificationLink(notification, role) {
 
   if (type.startsWith('meeting_')) {
     const meetingId = id(notification, 'meetingId');
-    if (role === ROLES.TEACHER && meetingId && !notification.data?.removed) {
-      return teacherPaths.meeting(meetingId);
+    if (meetingId && !notification.data?.removed) {
+      if (role === ROLES.TEACHER) return teacherPaths.meeting(meetingId);
+      if (role === ROLES.STUDENT) return studentPaths.meeting(meetingId);
     }
     return `${home}/meetings`;
   }
   if (type === 'notice') return `${home}/notices`;
-  if (type.startsWith('result_')) return `${home}/results`;
+  if (type.startsWith('result_')) {
+    const assessmentId = notification.data?.assessmentId;
+    if (role === ROLES.STUDENT && assessmentId) return studentPaths.result(assessmentId);
+    return `${home}/results`;
+  }
   if (['absence', 'attendance_corrected', 'low_attendance'].includes(type)) {
+    const day = notification.data?.date;
+    if (role === ROLES.STUDENT) return studentPaths.attendance({ day });
     return `${home}/attendance`;
   }
   return home;

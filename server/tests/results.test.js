@@ -241,7 +241,22 @@ describe('students only ever see published results', () => {
     await createWithEntries(fullMarks(), { name: 'Class Test 2' });
     expect((await mine()).body.data).toHaveLength(1);
     expect((await admin.get(`/results/student/${ayaan._id}`)).body.data).toHaveLength(1);
-    expect((await apiAs(nusrat).get(`/results/student/${ayaan._id}`)).status).toBe(403);
+    expect((await apiAs(nusrat).get(`/results/student/${ayaan._id}`)).status).toBe(404);
+  });
+
+  it('one test by assessmentId, with its saved scale; a draft id returns nothing', async () => {
+    const published = await createWithEntries(fullMarks());
+    await farhana.patch(`/assessments/${published}/publish`);
+    const draft = await createWithEntries(fullMarks(), { name: 'Class Test 2' });
+    // Changing the school scale later does not change the published test's scale.
+    await Settings.updateOne({}, { gradingScale: [{ grade: 'Pass', minPercent: 0 }] });
+
+    const one = (id) => apiAs(ayaan).get(`/results/student/${ayaan._id}?assessmentId=${id}`);
+    const [row] = (await one(published)).body.data;
+    expect(row.subjectId).toBe(String(school.subjects.english._id));
+    expect(row.assessment._id).toBe(published);
+    expect(row.assessment.gradingScale[0]).toMatchObject({ grade: 'A+', minPercent: 80 });
+    expect((await one(draft)).body.data).toEqual([]);
   });
 });
 

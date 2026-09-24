@@ -14,6 +14,7 @@ import * as meetings from '../services/meeting.service.js';
 import * as notices from '../services/notice.service.js';
 import * as results from '../services/results.service.js';
 import * as settings from '../services/settings.service.js';
+import * as studentProfiles from '../services/studentProfile.service.js';
 import * as assignments from '../services/teacherAssignment.service.js';
 import { sendCreated, sendSuccess } from '../utils/apiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -310,6 +311,20 @@ export function createSchoolSettingsRouter() {
     '/',
     authenticate,
     asyncHandler(async (req, res) => sendSuccess(res, { data: await settings.schoolSettings() })),
+  );
+  return router;
+}
+
+/** The signed-in student's own profile (FR-STU-01). */
+export function createStudentRouter() {
+  const router = Router();
+  router.get(
+    '/me',
+    authenticate,
+    authorize(ROLES.STUDENT),
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, { data: await studentProfiles.myProfile(req.user) }),
+    ),
   );
   return router;
 }

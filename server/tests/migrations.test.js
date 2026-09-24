@@ -97,11 +97,11 @@ describe('migration runner', () => {
 });
 
 describe('real migrations', () => {
-  it('001/002 backfill TeacherAssignment.status, attendanceAlert and attendanceBackdateDays', async () => {
+  it('001–004 backfill TeacherAssignment.status, attendanceAlert and attendanceBackdateDays', async () => {
     await db()
       .collection('teacherassignments')
       .insertOne({ teacherId: new mongoose.Types.ObjectId() });
-    await db().collection('studentprofiles').insertOne({ rollNo: 1 });
+    await db().collection('studentprofiles').insertOne({ rollNo: 1, nickname: '' });
     await db().collection('settings').insertOne({ key: 'global', attendanceThreshold: 75 });
     await db().collection('assessments').insertOne({ name: 'Old test' });
     await db().collection('results').insertOne({ marksObtained: 5 });
@@ -113,6 +113,7 @@ describe('real migrations', () => {
       '001-teacher-assignment-status',
       '002-attendance-notifications',
       '003-results-meetings-notices',
+      '004-student-nickname',
     ]);
     expect((await db().collection('assessments').findOne()).mode).toBe('marks');
     expect((await db().collection('results').findOne()).attendance).toBe('present');
@@ -122,9 +123,9 @@ describe('real migrations', () => {
     });
 
     expect((await db().collection('teacherassignments').findOne()).status).toBe('active');
-    expect((await db().collection('studentprofiles').findOne()).attendanceAlert).toEqual({
-      belowThreshold: false,
-    });
+    const profile = await db().collection('studentprofiles').findOne();
+    expect(profile.attendanceAlert).toEqual({ belowThreshold: false });
+    expect(profile).not.toHaveProperty('nickname');
     expect((await db().collection('settings').findOne()).attendanceBackdateDays).toBe(7);
   });
 

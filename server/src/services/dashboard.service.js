@@ -364,7 +364,7 @@ export async function teacherDashboard(actor) {
 }
 
 export async function studentDashboard(actor) {
-  const [summary, absenceAlerts, results, meetings, unread, notices] = await Promise.all([
+  const [summary, absenceAlerts, results, meetings, unread, recent, notices] = await Promise.all([
     studentSummary(actor.id).catch((err) => (err.statusCode === 404 ? null : Promise.reject(err))),
     Notification.find({ recipientId: actor.id, type: 'absence' })
       .sort({ updatedAt: -1 })
@@ -374,6 +374,12 @@ export async function studentDashboard(actor) {
     studentResults(actor.id, { limit: 5 }),
     upcomingMeetings({ inviteeStudentIds: oid(actor.id) }),
     countUnread(actor.id),
+    // Uses the (recipientId, isRead, createdAt) index.
+    Notification.find({ recipientId: actor.id, isRead: false })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .select('type title message data isRead createdAt updatedAt')
+      .lean(),
     listNotices(actor, { page: 1, limit: 5 }),
   ]);
   return {
@@ -392,11 +398,14 @@ export async function studentDashboard(actor) {
     },
     absenceAlerts,
     recentResults: results,
+    // Scheduled, not started and the child is invited: the guardian can still reply.
     upcomingMeetings: meetings.map(({ inviteeStudentIds: _i, responses, ...m }) => ({
       ...m,
+      canRespond: true,
       myResponse: responses.find((r) => String(r.studentId) === String(actor.id)) ?? null,
     })),
     unreadNotifications: unread,
+    recentNotifications: recent,
     notices: notices.items,
   };
 }

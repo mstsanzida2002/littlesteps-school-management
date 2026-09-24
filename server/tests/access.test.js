@@ -153,10 +153,11 @@ describe('teacherOwnsAssignment()', () => {
 });
 
 describe('studentOwnsRecord()', () => {
-  it("allows a student their own record and denies another student's", async () => {
+  it("allows a student their own record; another student's is 404 (never confirmed)", async () => {
     expect((await get(`/students/${student._id}/records`, student)).status).toBe(200);
     const res = await get(`/students/${otherStudent._id}/records`, student);
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
+    expect(res.body.message).toBe('Not found');
   });
 
   it('allows teachers only for students in their assigned class-sections', async () => {

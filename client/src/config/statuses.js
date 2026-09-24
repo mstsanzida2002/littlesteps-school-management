@@ -15,8 +15,11 @@ import {
   CircleCheckBig,
   CircleDotDashed,
   CircleDashed,
+  CircleMinus,
   CircleX,
   Clock,
+  Contrast,
+  Moon,
   Hourglass,
   PencilLine,
   Send,
@@ -60,6 +63,18 @@ export const STATUS_GROUPS = Object.freeze({
     marked: { label: 'Marked', icon: CircleCheckBig, tone: 'present' },
     partial: { label: 'Partly marked', icon: CircleDotDashed, tone: 'late' },
     pending: { label: 'To mark', icon: Hourglass, tone: 'info' },
+  }),
+  /**
+   * One school day on the guardian's calendar (features/attendance/guardianDays.js): the day's
+   * subject records combined, plus days without classes.
+   */
+  day: define({
+    present: { label: 'Present', icon: CircleCheck, tone: 'present' },
+    absent: { label: 'Absent', icon: CircleX, tone: 'absent' },
+    late: { label: 'Late', icon: Clock, tone: 'late' },
+    partial: { label: 'Part of the day', icon: Contrast, tone: 'late' },
+    no_class: { label: 'No class', icon: CircleMinus, tone: 'neutral' },
+    off_day: { label: 'Off day', icon: Moon, tone: 'neutral' },
   }),
   /** Derived meeting state (from cancelledAt and dateTime). */
   meeting: define({

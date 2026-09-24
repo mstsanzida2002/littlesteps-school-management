@@ -36,6 +36,7 @@ const STUDENT_PROFILE_KEYS = [
   'gender',
   'admissionDate',
   'guardian',
+  'nickname',
 ];
 const TEACHER_PROFILE_KEYS = ['employeeId', 'qualification', 'joiningDate'];
 
@@ -100,7 +101,7 @@ export async function listUsers({
   const ids = items.map((u) => u._id);
   const [studentProfiles, teacherProfiles] = await Promise.all([
     StudentProfile.find({ userId: { $in: ids } })
-      .select('userId rollNo classId sectionId sessionId')
+      .select('userId rollNo nickname classId sectionId sessionId')
       .populate(studentProfilePopulate)
       .lean(),
     TeacherProfile.find({ userId: { $in: ids } })
@@ -196,6 +197,7 @@ export async function createUser(actor, data, meta) {
               gender: profile.gender,
               admissionDate: profile.admissionDate ?? todaySchoolDate(),
               guardian: profile.guardian,
+              nickname: profile.nickname,
             },
           ],
           { session },

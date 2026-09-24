@@ -11,7 +11,7 @@ export const USERS = {
   admin: { identifier: 'admin', password: 'Admin@1234', name: 'Mohammad Kamal Hossain' },
   // Playgroup (A + B): attendance.spec
   farhana: { identifier: 'farhana.akter', password: 'Teacher@1234', name: 'Farhana Akter' },
-  // Nursery: a11y.spec (read-only)
+  // Nursery: a11y.spec (read-only), student-attendance.spec (marks Nursery-A)
   nasrin: { identifier: 'nasrin.sultana', password: 'Teacher@1234', name: 'Nasrin Sultana' },
   // KG-1: results.spec
   tahmina: { identifier: 'tahmina.rahman', password: 'Teacher@1234', name: 'Tahmina Rahman' },
@@ -19,6 +19,29 @@ export const USERS = {
   shirin: { identifier: 'shirin.akhter', password: 'Teacher@1234', name: 'Shirin Akhter' },
 };
 export const studentLogin = (username) => ({ identifier: username, password: 'Student@1234' });
+
+// --- School dates (as the app computes them: Dhaka calendar days as 'YYYY-MM-DD') ----------
+
+const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+export const addDays = (key, n) =>
+  new Date(Date.parse(`${key}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+const isOff = (key, offDays) =>
+  offDays.includes(WEEKDAYS[new Date(`${key}T00:00:00Z`).getUTCDay()]);
+
+/** The e2e seed's unmarked day: the newest school day on or before today (GET /settings/school). */
+export function markableDay(settings) {
+  let day = settings.today;
+  while (isOff(day, settings.weeklyOffDays)) day = addDays(day, -1);
+  return day;
+}
+
+/** "Thu, 24 Sep", the way the app labels a day. */
+export function dayLabel(key) {
+  const date = new Date(`${key}T00:00:00Z`);
+  const part = (options) =>
+    new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', ...options }).format(date);
+  return `${part({ weekday: 'short' })}, ${part({ day: 'numeric' })} ${part({ month: 'short' })}`;
+}
 
 /** Sign in through the login form; waits for the signed-in page. */
 export async function login(page, user, { expectPath } = {}) {

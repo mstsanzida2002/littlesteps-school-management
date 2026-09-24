@@ -29,9 +29,12 @@ The whole server side of the SRS is done; the UIs are next:
 - **Teacher UI** is done: dashboard, take / view / edit attendance, class summary and student
   history, assessments and result entry, meetings, notices, and the notifications page (shared by
   every role). See "Teacher screens" below.
+- **Guardian (student) UI** is done: home, attendance calendar, results, meetings with replies
+  and "Add to calendar", notices, profile, "Switch child", and the web app manifest. See
+  "Guardian screens" below.
 - **E2E suite** (Playwright, `npm run e2e`) runs against an in-memory database. See "E2E suite".
-- Not yet built: the student and admin UIs (their nav items show a "coming soon" page, except
-  notices and notifications, which work for every role).
+- Not yet built: the admin UI (its nav items show a "coming soon" page, except notices and
+  notifications, which work for every role).
 
 ## Stack
 
@@ -88,7 +91,8 @@ npm run dev            # server :5000 + client :5173 concurrently
 npm run dev:server     # / dev:client
 npm test               # server + client tests (Vitest)
 npm run e2e            # Playwright suite (own API + client, in-memory database)
-npm run e2e:screens    # screenshots of every teacher screen → docs/design/screens/teacher
+npm run e2e:screens    # screenshots of every teacher and guardian screen → docs/design/screens/
+npm run e2e:perf       # guardian home page on slow 3G (production build, own API)
 npm run lint           # ESLint both apps   (lint:fix to autofix)
 npm run format         # Prettier write     (format:check in CI)
 npm run build          # client production build
@@ -131,6 +135,8 @@ Env: copy `server/.env.example` → `server/.env`, `client/.env.example` → `cl
     day on Fridays and Saturdays), so browser tests always have a day to take attendance on.
   - The data is created by `seed/seedDatabase.js` (importable); `seed/seed.js` is only the CLI
     (safety checks, `--reset`).
+  - A few students have a nickname (`pg-a-02` Mim, `nur-a-02` Oishi, `nur-b-03` Tuli,
+    `kg1-a-05` Rafi, `kg2-b-01` Rimi).
   - Seeded accounts have `mustChangePassword: false`.
   - Dev logins: `admin` / `Admin@1234`, teachers `<first>.<last>` / `Teacher@1234`, students
     `<class>-<section>-<roll>` (e.g. `kg1-a-03`) / `Student@1234`. The script prints them all.
@@ -165,7 +171,7 @@ Env: copy `server/.env.example` → `server/.env`, `client/.env.example` → `cl
 - `seed --reset` records every migration as applied (baseline), since freshly seeded data already
   has the current schema.
 - Applied so far: `001-teacher-assignment-status`, `002-attendance-notifications`,
-  `003-results-meetings-notices`.
+  `003-results-meetings-notices`, `004-student-nickname`.
 
 ## Database outages
 
@@ -208,13 +214,16 @@ client/src/
   components/brand/  Logo, LogoMark (flat footprint SVG), LogoLink; logoAssets.js (srcsets, preload)
   components/ui/     shared components (see "Design system")
   components/layout/ Sidebar, AppHeader, BottomNav, MoreSheet (the dashboard shell)
-  components/charts/ TrendLineChart, ComparisonBarChart, CalendarHeatmap, ChartFigure, summaries
+  components/charts/ TrendLineChart, ComparisonBarChart, CalendarHeatmap, ChartFigure, summaries,
+                     MonthBars (CSS bars, no Recharts: for the guardian's pages)
   features/<area>/{api,hooks,components,pages}
                    areas: auth, school (settings + my assignments), dashboard, attendance,
-                   results, meetings, notices, notifications; pages per role in teacher/ …
-  config/paths.js  URL builders (teacherPaths) and notificationLink(notification, role)
+                   results, meetings, notices, notifications; pages per role in teacher/ and
+                   student/. Guardian-facing words live in features/<area>/text/ (see below).
+  config/paths.js  URL builders (teacherPaths, studentPaths) and notificationLink(notification, role)
   lib/             errorMessages.js (every error code → words), serverErrors.js,
-                   realtimeInvalidation.js (notification type → query keys)
+                   realtimeInvalidation.js (notification type → query keys),
+                   rememberedAccounts.js (children used on this device)
   hooks/           useZodForm, useUnsavedChanges, useMediaQuery, useDocumentTitle
   dev/styleguide/  /styleguide page (development only; not in production builds)
   __tests__/       client unit tests (Vitest, node environment)
@@ -356,6 +365,64 @@ stack? }`. Produced solely by `middleware/errorHandler.js`; stack only in dev fo
 - **Meetings:** teachers invite their class-sections, whole classes from `wholeClasses`, or
   chosen students (roster from the class summary). Date and time are Dhaka wall-clock
   (`schoolDateTimeParts` for editing).
+
+## Guardian screens (student role, FR-STU-01…08)
+
+The account belongs to the child but is used by a parent or guardian, usually on a phone.
+
+| Route (`/student/…`)             | Screen                                                                                                                                                 |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| (index)                          | Home: ring + one plain sentence, counts, absence alerts, invitations with quick replies, latest results, month bars, new notifications, pinned notices |
+| `attendance?month=&day=`         | Month calendar (a status per day), day sheet, by subject, month by month, gentle warning below the threshold                                           |
+| `results?view=subject\|test`     | Published tests grouped by subject or by test, marks/grade or Absent/Excused, remarks                                                                  |
+| `results/:assessmentId`          | One test + "What do the grades mean?" (the scale saved on the test)                                                                                    |
+| `meetings?when=`, `meetings/:id` | Invitations; details with reply + note, "Add to calendar" (.ics), cancelled banner                                                                     |
+| `notices`, `notifications`       | Shared pages (guardian wording on notices)                                                                                                             |
+| `profile`                        | Child, teachers by subject (names only), guardian on file (read-only), change password, switch child                                                   |
+| anything else                    | `ChildNotFound` inside the shell                                                                                                                       |
+
+- **Words:** plain and warm: "test" (never assessment), "school year" (never session), the child
+  by name. Every guardian-facing string lives in the feature's text module
+  (`features/{student,attendance,results,meetings,notices}/text/en.js`, imported through
+  `text/index.js`); to add Bangla, add `bn.js` with the same shape and pick it in `index.js`.
+  Status labels on guardian screens come from these modules too (`label` prop of StatusBadge).
+- **The child's name:** `childName(user)` (`utils/names.js`): `StudentProfile.nickname` when set,
+  else `firstNameOf(name)`, which skips honorifics ("Md.", "Mst.", "মোঃ"…). Students' session user
+  (`/auth/login`, `/refresh`, `/me`) carries `nickname`; `useChild()` gives `displayName`.
+- **Data:** the home page is one request (`GET /api/dashboard/student`, now with
+  `recentNotifications` and `canRespond` on invitations). The profile is `GET /api/students/me`
+  (students only: the child, the placement, the guardian, teachers by subject with names only).
+  `GET /api/results/student/:id` returns `subjectId` and `assessment.gradingScale`, and takes
+  `assessmentId` for one test (published only, as always).
+- **Privacy:** a student asking for another student's records gets **404** (`studentOwnsRecord`),
+  never 403, so an id is never confirmed. Guardian pages wrap queries in `ChildQuery` (403/404 →
+  `ChildNotFound`) and check route ids with `isObjectId` before asking the API. Staff routes send
+  a guardian to `/student` (RoleRoute).
+- **Calendar:** `guardianDays.js` turns a day's subject records into one status (group `day` in
+  `config/statuses.js`): absent in all = Absent, in some = Part of the day, any late = Late, else
+  Present; a school day from admission to today with no records = No class; weekly off days = Off
+  day; nothing for future days. Months are `'YYYY-MM'` keys (`utils/date.js`: `monthBounds`,
+  `addMonthsToKey`, `formatMonth`), limited to the school year.
+- **Meetings:** quick replies save at once; the details page adds an optional note. Cancelled and
+  started meetings take no replies (409 errors in words too). `utils/ics.js` builds the .ics in UTC
+  (`DTSTART:…Z`), so calendars show the Dhaka time; end = start + `durationMinutes` (or 60).
+- **Switch child:** the menu (phones), the header (desktop) and the profile log out normally and
+  open `/login?switch=1`. The login page offers the children used on this device as one-tap chips
+  ("Rimi (kg2-b-01)"), from `lib/rememberedAccounts.js`: localStorage, **usernames and display
+  names only**, never passwords or tokens, at most 5, student accounts only, each removable.
+  The header always shows whose account is open (sticky).
+- **Home screen:** `public/manifest.webmanifest` (start `/student`, icons from the footprint mark:
+  `icon-192/512.png`, `icon-maskable-512.png`). No service worker, so no offline mode in v1.
+- **Slow networks** (`npm run e2e:perf`, Chrome's "Slow 3G": 2 s round trips, 400 kbit/s):
+  - `index.html` paints the logo before any script arrives; on `/student`, `main.jsx` starts
+    downloading the home page's code during the session check, and the shell starts the
+    dashboard request as the page's code loads (`usePrefetchDashboard`).
+  - Guardian pages never load Recharts (`MonthBars` is plain CSS). Vercel serves `/assets`
+    immutable (`vercel.json`), so a repeat visit downloads no JavaScript.
+  - Measured (HTTP/2, first paint / skeleton / content): first visit 5.0 / 10.8 / 12.7 s, repeat
+    visit 2.1 / 4.6 / 6.5 s. A repeat visit is near the floor: the page, the session check and
+    the data are one round trip each. The test asserts budgets with ~30% headroom and exactly one
+    refresh, one dashboard and at most one unread-count request.
 
 ## Design system (direction D "Guava")
 
@@ -506,6 +573,9 @@ feature code (`npx vite build` output).
     - `Meeting.invite.teacherIds`, target `none` (staff-only), and
       `cancelledAt` / `cancelledBy` / `cancelReason`.
     - `Notice.status` (`draft | published`) and `createdBy`.
+12. **`StudentProfile.nickname`** (optional, 1–30 letters, trimmed; migration 004): what the child
+    is called at home. Admins set it on create, edit (`''`/`null` clears it) and approval. Shown
+    only to the child's guardian and to staff who can already see that student.
 
 ## Attendance feature rules
 
@@ -855,7 +925,8 @@ refreshIpMax } })`.
   - `authenticate`, then `authorize(...roles)`.
   - `teacherOwnsAssignment(getScope?)`: assignment in the **active session**; admin passes;
     student is denied.
-  - `studentOwnsRecord(getStudentId?)`: own record, an assigned teacher, or admin.
+  - `studentOwnsRecord(getStudentId?)`: own record, an assigned teacher, or admin. Another
+    student gets **404** (not 403), so the id is never confirmed.
   - Every feature route uses these, and services re-check with `canAccess*` when they load data
     by other IDs.
 
@@ -986,21 +1057,31 @@ refreshIpMax } })`.
   (`fullyParallel: false`; data-changing specs also use `mode: 'serial'`). Every spec that
   changes data owns different people, so they never collide:
 
-  | Spec                           | Owns (changes)                                              |
-  | ------------------------------ | ----------------------------------------------------------- |
-  | `attendance.spec.js`           | farhana.akter, Playgroup-A/B attendance on the unmarked day |
-  | `results.spec.js`              | tahmina.rahman, the KG-1-A draft Math test                  |
-  | `meetings.spec.js`             | shirin.akhter, a new KG-2-A meeting                         |
-  | `realtime.spec.js`             | admin override of kg2-b-02's attendance                     |
-  | `notifications.spec.js`        | nur-b-01's notifications (read state)                       |
-  | `password-change.spec.js`      | a new user it creates (`e2e.newteacher`)                    |
-  | `auth.spec.js`, `a11y.spec.js` | read-only (sessions only)                                   |
+  | Spec                                              | Owns (changes)                                                 |
+  | ------------------------------------------------- | -------------------------------------------------------------- |
+  | `attendance.spec.js`                              | farhana.akter, Playgroup-A/B attendance on the unmarked day    |
+  | `results.spec.js`                                 | tahmina.rahman, the KG-1-A draft Math test                     |
+  | `meetings.spec.js`                                | shirin.akhter, a new KG-2-A meeting                            |
+  | `realtime.spec.js`                                | admin override of kg2-b-02's attendance                        |
+  | `notifications.spec.js`                           | nur-b-01's notifications (read state)                          |
+  | `password-change.spec.js`                         | a new user it creates (`e2e.newteacher`)                       |
+  | `student-attendance.spec.js`                      | nasrin.sultana marking Nursery-A on the unmarked day; nur-a-02 |
+  | `student-results.spec.js`                         | the KG-1-B draft Math test (the admin publishes it); kg1-b-01  |
+  | `student-meetings.spec.js`                        | meetings the admin creates for nur-b-03 only                   |
+  | `student-screens.spec.js`                         | a new Nursery-B student it creates (`e2e.newchild`)            |
+  | `auth`, `a11y`, `switch-child`, `student-privacy` | read-only (sessions, this browser's storage)                   |
 
   A new data-changing spec takes an unused class-section or student and adds a row here.
 
-- `npm run e2e:screens` (`screens.spec.js`, project `screens`): every teacher screen at 375
-  and 1280 px, including dialogs, loading and error states, into `docs/design/screens/teacher/`.
-  Read-only; it uses `reducedMotion: 'reduce'` so charts are not caught mid-animation.
+- `npm run e2e:screens` (project `screens`: `screens.spec.js`, `student-screens.spec.js`):
+  every teacher and guardian screen at 375 and 1280 px, including dialogs, loading, error and
+  empty states, into `docs/design/screens/{teacher,student}/`. It uses `reducedMotion: 'reduce'`
+  so charts are not caught mid-animation.
+- `npm run e2e:perf` (`playwright.perf.config.js`, `perf/`): its own API (:5110) and a production
+  build served like Vercel by `perf/prodServer.js` (HTTP/2 with a throwaway openssl certificate,
+  brotli/gzip, immutable `/assets`, `/api` proxied) on :5176; Chrome's Slow 3G via CDP. Without
+  openssl it falls back to HTTP/1.1 (Chrome then fetches 6 files at a time: much slower). `vite
+preview` isn't used: it sends files uncompressed with no-cache.
 - Assert what the user sees (roles, labels, text); use the API (`apiAs` in `tests/helpers.js`)
   only for set-up and for checking side effects such as notifications.
 
@@ -1017,6 +1098,9 @@ refreshIpMax } })`.
   it is scoped to a class-section or a student.
 - Don't change a schema without a migration.
 - Don't point browser checks at `littlesteps_dev`: use the E2E suite (in-memory database).
+- Don't write guardian-facing words in components: put them in the feature's text module. Don't
+  say "assessment" or "session" to parents, or return 403 for another child's records.
+- Don't import chart components (Recharts) on guardian pages; use `MonthBars`.
 - Don't show a status by colour alone (use `config/statuses.js`), put the full logo on a dark
   surface, use Cerise for success, or import full `zod` or chart components on the login path.
 - Don't emit sockets or send emails inside a transaction; queue them in the outbox.

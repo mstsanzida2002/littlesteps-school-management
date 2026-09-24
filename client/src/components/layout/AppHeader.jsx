@@ -1,4 +1,4 @@
-import { KeyRound, LogOut } from 'lucide-react';
+import { ArrowLeftRight, KeyRound, LogOut } from 'lucide-react';
 import { Link } from 'react-router';
 
 import { ROLE_LABELS, ROUTES } from '../../config/constants.js';
@@ -13,11 +13,11 @@ import { buttonClasses } from '../ui/buttonStyles.js';
 /**
  * Top bar: a light surface with Charleston text and icons and the thin Deep Blush line
  * underneath (the logo's dark green "Little" would disappear on a dark bar).
- * Phones: footprint mark, name, role and date, bell, avatar (opens the account sheet).
+ * Desktop: today's date, bell, name and role, change password, switch child (guardians), log out.
  * Desktop: today's date, bell, name and role, change password, log out.
  * (The page title is the page's own h1; repeating it here would say it twice.)
  */
-export function AppHeader({ user, homeTo, onOpenAccount, onLogout, loggingOut }) {
+export function AppHeader({ user, homeTo, onOpenAccount, onLogout, switchChild, loggingOut }) {
   const roleLabel = ROLE_LABELS[user?.role] ?? user?.role;
   const today = todayDateKey();
   return (
@@ -70,6 +70,16 @@ export function AppHeader({ user, homeTo, onOpenAccount, onLogout, loggingOut })
           >
             <KeyRound aria-hidden="true" className="size-5" />
           </Link>
+          {switchChild && (
+            <Button
+              variant="ghost"
+              icon={ArrowLeftRight}
+              onClick={switchChild.onClick}
+              disabled={loggingOut}
+            >
+              {switchChild.label}
+            </Button>
+          )}
           <Button variant="secondary" icon={LogOut} onClick={onLogout} loading={loggingOut}>
             {loggingOut ? 'Logging out…' : 'Log out'}
           </Button>

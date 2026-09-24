@@ -110,3 +110,41 @@ export function formatSchoolTime(value) {
   const p = partsOf(schoolParts, new Date(value));
   return `${p.hour}:${p.minute} ${p.dayPeriod.toLowerCase()}`;
 }
+
+// --- Months ('YYYY-MM' keys) ----------------------------------------------------
+
+const MONTH_KEY_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** True for a month key such as '2026-09'. */
+export function isMonthKey(value) {
+  return typeof value === 'string' && MONTH_KEY_RE.test(value);
+}
+
+/** '2026-09-23' → '2026-09'. */
+export const monthKeyOf = (dateKey) => dateKey.slice(0, 7);
+
+/** The month key n months after (or before) a month key. */
+export function addMonthsToKey(monthKey, months) {
+  const [year, month] = monthKey.split('-').map(Number);
+  const index = year * 12 + (month - 1) + months;
+  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}`;
+}
+
+/** First and last date keys of a month: { from: '2026-09-01', to: '2026-09-30' }. */
+export function monthBounds(monthKey) {
+  const from = `${monthKey}-01`;
+  return { from, to: addDaysToKey(`${addMonthsToKey(monthKey, 1)}-01`, -1) };
+}
+
+const monthFormatter = new Intl.DateTimeFormat('en-US', {
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+const shortMonthFormatter = new Intl.DateTimeFormat('en-US', { month: 'short', timeZone: 'UTC' });
+
+/** '2026-09' → "September 2026" ({ short: true } → "Sep"). */
+export function formatMonth(monthKey, { short = false } = {}) {
+  const date = new Date(`${monthKey}-01T00:00:00.000Z`);
+  return (short ? shortMonthFormatter : monthFormatter).format(date);
+}

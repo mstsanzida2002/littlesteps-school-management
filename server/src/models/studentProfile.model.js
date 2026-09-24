@@ -18,6 +18,9 @@ const studentProfileSchema = new mongoose.Schema(
     dateOfBirth: schoolDate(),
     gender: { type: String, enum: GENDERS },
     guardian: { type: guardianSchema, required: true },
+    // What the child is called at home; guardian-facing text prefers it over the first name.
+    // '' / null clear it (the setter turns them into undefined, so the field is removed).
+    nickname: { type: String, trim: true, maxlength: 30, set: (v) => v || undefined },
     admissionDate: schoolDate(),
     // Low-attendance crossing state (FR-STU-04): the warning fires only when this flips to true.
     attendanceAlert: {

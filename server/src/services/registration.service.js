@@ -69,6 +69,7 @@ export async function approveRegistration(actor, id, input, meta = {}) {
             gender: reg.gender,
             admissionDate: input.admissionDate ?? todaySchoolDate(),
             guardian: reg.guardian,
+            nickname: input.nickname,
           },
         ],
         { session },

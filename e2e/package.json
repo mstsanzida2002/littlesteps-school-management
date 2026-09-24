@@ -6,7 +6,8 @@
   "scripts": {
     "e2e": "playwright test --project=e2e",
     "e2e:screens": "playwright test --project=screens",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "e2e:perf": "playwright test --config playwright.perf.config.js"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

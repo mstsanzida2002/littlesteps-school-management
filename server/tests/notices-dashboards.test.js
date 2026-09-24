@@ -260,6 +260,12 @@ describe('dashboards', () => {
     expect(data.notices.map((n) => n.title)).toEqual(['Sports day on Thursday']);
     // result_published + meeting_invite + notice
     expect(data.unreadNotifications).toBe(3);
+    expect(data.recentNotifications.map((n) => n.type).sort()).toEqual([
+      'meeting_invite',
+      'notice',
+      'result_published',
+    ]);
+    expect(data.recentNotifications.every((n) => n.isRead === false)).toBe(true);
     expect(await User.countDocuments()).toBeGreaterThan(0);
   });
 });

@@ -1,3 +1,6 @@
+import { formatDateTime } from '../../utils/date.js';
+import { text } from './text/index.js';
+
 /** How meeting fields are shown (server enums in models/meeting). */
 export const MEETING_TYPES = Object.freeze([
   { value: 'parent_teacher', label: 'Parent-teacher meeting' },
@@ -17,3 +20,8 @@ export function meetingState(meeting, now = Date.now()) {
 }
 
 export const DURATIONS = Object.freeze([15, 20, 30, 45, 60, 90, 120]);
+
+/** Guardian lists: "Thu, 26 Sep 2026, 4:30 pm · KG-2 classroom" (or "· Online"). */
+export function meetingWhenWhere(meeting) {
+  return `${formatDateTime(meeting.dateTime, { weekday: true })} · ${meeting.venue || text.online}`;
+}

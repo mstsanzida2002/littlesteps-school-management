@@ -652,7 +652,7 @@ export async function editPublishedResult(actor, resultId, { reason, ...changes 
 // Student view — PUBLISHED ONLY, enforced here for every caller.
 
 /** GET /api/results/student/:studentId */
-export async function studentResults(studentId, { limit = 50, subjectId } = {}) {
+export async function studentResults(studentId, { limit = 50, subjectId, assessmentId } = {}) {
   const activeSession = await requireActiveSession();
   const rows = await Result.aggregate([
     { $match: { studentId: new mongoose.Types.ObjectId(String(studentId)) } },
@@ -671,6 +671,9 @@ export async function studentResults(studentId, { limit = 50, subjectId } = {}) 
         'assessment.sessionId': activeSession._id,
         ...(subjectId && {
           'assessment.subjectId': new mongoose.Types.ObjectId(String(subjectId)),
+        }),
+        ...(assessmentId && {
+          'assessment._id': new mongoose.Types.ObjectId(String(assessmentId)),
         }),
       },
     },
@@ -700,8 +703,11 @@ export async function studentResults(studentId, { limit = 50, subjectId } = {}) 
           totalMarks: '$assessment.totalMarks',
           date: '$assessment.date',
           publishedAt: '$assessment.publishedAt',
+          // The scale saved when it was published: "What do the grades mean?"
+          gradingScale: '$assessment.gradingScale',
         },
         subject: { $first: '$subject.name' },
+        subjectId: '$assessment.subjectId',
       },
     },
   ]);

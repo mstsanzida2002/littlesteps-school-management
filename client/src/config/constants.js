@@ -3,6 +3,7 @@ import {
   CalendarCheck,
   ClipboardList,
   House,
+  IdCard,
   LayoutDashboard,
   Megaphone,
   School,
@@ -79,5 +80,6 @@ export const NAV_ITEMS = Object.freeze({
     { label: 'Results', to: '/student/results', icon: Award, primary: true },
     { label: 'Meetings', to: '/student/meetings', icon: UsersRound, primary: true },
     { label: 'Notices', to: '/student/notices', icon: Megaphone },
+    { label: 'Profile', to: '/student/profile', icon: IdCard },
   ],
 });

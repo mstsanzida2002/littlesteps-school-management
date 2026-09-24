@@ -16,4 +16,7 @@ export const meetingsApi = {
   create: (body) => api.post('/meetings', body).then((res) => res.data),
   update: ({ id, ...changes }) => api.patch(`/meetings/${id}`, changes).then((res) => res.data),
   cancel: ({ id, reason }) => api.post(`/meetings/${id}/cancel`, { reason }),
+  /** Guardians: { response: 'will_attend' | 'cannot_attend', note? } → the meeting */
+  respond: ({ id, response, note }) =>
+    api.patch(`/meetings/${id}/respond`, { response, note }).then((res) => res.data),
 };
