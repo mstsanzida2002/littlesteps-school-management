@@ -65,6 +65,12 @@ export async function verifyAccessToken(token) {
 
 export const hashToken = (token) => createHash('sha256').update(token).digest('hex');
 
+/** The session (family) a refresh token belongs to, or null if unknown. For rate limiting. */
+export async function refreshFamilyOf(token) {
+  const found = await RefreshToken.findOne({ tokenHash: hashToken(token) }, { family: 1 }).lean();
+  return found?.family ?? null;
+}
+
 /** Create a refresh token for a user. Omit `family` to start a new session (login). */
 export async function issueRefreshToken(user, { family = randomUUID(), ip, userAgent } = {}) {
   const token = randomBytes(32).toString('base64url');

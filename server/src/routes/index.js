@@ -16,6 +16,8 @@ import {
   createAssessmentRouter,
   createDashboardRouter,
   createMeetingRouter,
+  createMyAssignmentsRouter,
+  createSchoolSettingsRouter,
   createNoticeRouter,
   createResultRouter,
 } from './feature.routes.js';
@@ -27,15 +29,19 @@ import { createUserRouter } from './user.routes.js';
  * Builds the /api router. A factory (not a module singleton) so each app instance gets fresh
  * rate-limit counters and options (e.g. tests toggling self-registration).
  */
-export function createApiRouter({ selfRegistrationEnabled, testRouter } = {}) {
+export function createApiRouter({ selfRegistrationEnabled, rateLimits, testRouter } = {}) {
   const router = Router();
 
   router.use('/health', healthRoutes);
   // Everything below needs MongoDB: 503 DATABASE_UNAVAILABLE while it is down.
   router.use(requireDatabase);
-  router.use('/auth', createAuthRouter({ selfRegistrationEnabled }));
+  router.use('/auth', createAuthRouter({ selfRegistrationEnabled, rateLimits }));
 
   // Admin module (all admin-only)
+  // Non-admin lookups first: the admin routers below reject everyone else with 403.
+  router.use('/settings/school', createSchoolSettingsRouter());
+  router.use('/teacher-assignments/mine', createMyAssignmentsRouter());
+
   router.use('/users', createUserRouter());
   router.use('/classes', createClassRouter());
   router.use('/sections', createSectionRouter());

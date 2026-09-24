@@ -5,7 +5,9 @@ import {
   eachDateKey,
   formatDateTime,
   formatSchoolDate,
+  formatSchoolTime,
   isDateKey,
+  schoolDateTimeParts,
   todayDateKey,
   weekdayOfKey,
 } from '../utils/date.js';
@@ -49,5 +51,19 @@ describe('client date utils', () => {
     expect(isDateKey('2026-02-30')).toBe(false);
     expect(isDateKey('24/09/2026')).toBe(false);
     expect(isDateKey(null)).toBe(false);
+  });
+});
+
+describe('meeting times in Dhaka', () => {
+  it('splits an instant into the Dhaka date and 24-hour time', () => {
+    expect(schoolDateTimeParts('2026-09-27T05:00:00.000Z')).toEqual({
+      date: '2026-09-27',
+      time: '11:00',
+    });
+    expect(schoolDateTimeParts('2026-09-26T18:30:00.000Z')).toEqual({
+      date: '2026-09-27',
+      time: '00:30',
+    });
+    expect(formatSchoolTime('2026-09-27T05:00:00.000Z')).toBe('11:00 am');
   });
 });

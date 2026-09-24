@@ -26,9 +26,12 @@ The whole server side of the SRS is done; the UIs are next:
 - **Design system** (direction D "Guava", `docs/design/`) is done: tokens, the logo, shared
   components, chart wrappers, forms with server errors, and the app shell. Login and change
   password use it. See "Design system" below and `/styleguide` (development only).
-- Not yet built: the teacher, student and admin UIs (dashboards with charts, attendance taking,
-  result entry, meetings, notices) and the notification list page. Their nav items show a
-  "coming soon" page.
+- **Teacher UI** is done: dashboard, take / view / edit attendance, class summary and student
+  history, assessments and result entry, meetings, notices, and the notifications page (shared by
+  every role). See "Teacher screens" below.
+- **E2E suite** (Playwright, `npm run e2e`) runs against an in-memory database. See "E2E suite".
+- Not yet built: the student and admin UIs (their nav items show a "coming soon" page, except
+  notices and notifications, which work for every role).
 
 ## Stack
 
@@ -84,6 +87,8 @@ npm install            # installs both workspaces
 npm run dev            # server :5000 + client :5173 concurrently
 npm run dev:server     # / dev:client
 npm test               # server + client tests (Vitest)
+npm run e2e            # Playwright suite (own API + client, in-memory database)
+npm run e2e:screens    # screenshots of every teacher screen → docs/design/screens/teacher
 npm run lint           # ESLint both apps   (lint:fix to autofix)
 npm run format         # Prettier write     (format:check in CI)
 npm run build          # client production build
@@ -122,6 +127,10 @@ Env: copy `server/.env.example` → `server/.env`, `client/.env.example` → `cl
   - **`--large`**: about 500 students (8 × 63) with the same 30 days of attendance (~55k records)
     and more meetings and notices, for performance testing. Seed it into a separate
     `*_perf_dev` database (override `MONGODB_URI`) so `littlesteps_dev` keeps its demo data.
+  - **`--e2e`**: also leaves the newest school day on or before today unmarked (today is an off
+    day on Fridays and Saturdays), so browser tests always have a day to take attendance on.
+  - The data is created by `seed/seedDatabase.js` (importable); `seed/seed.js` is only the CLI
+    (safety checks, `--reset`).
   - Seeded accounts have `mustChangePassword: false`.
   - Dev logins: `admin` / `Admin@1234`, teachers `<first>.<last>` / `Teacher@1234`, students
     `<class>-<section>-<roll>` (e.g. `kg1-a-03`) / `Student@1234`. The script prints them all.
@@ -200,8 +209,13 @@ client/src/
   components/ui/     shared components (see "Design system")
   components/layout/ Sidebar, AppHeader, BottomNav, MoreSheet (the dashboard shell)
   components/charts/ TrendLineChart, ComparisonBarChart, CalendarHeatmap, ChartFigure, summaries
-  features/<auth|admin|teacher|student|notifications>/{api,hooks,components,pages}
-  hooks/           useZodForm, useMediaQuery, useDocumentTitle
+  features/<area>/{api,hooks,components,pages}
+                   areas: auth, school (settings + my assignments), dashboard, attendance,
+                   results, meetings, notices, notifications; pages per role in teacher/ …
+  config/paths.js  URL builders (teacherPaths) and notificationLink(notification, role)
+  lib/             errorMessages.js (every error code → words), serverErrors.js,
+                   realtimeInvalidation.js (notification type → query keys)
+  hooks/           useZodForm, useUnsavedChanges, useMediaQuery, useDocumentTitle
   dev/styleguide/  /styleguide page (development only; not in production builds)
   __tests__/       client unit tests (Vitest, node environment)
   utils/ pages/    app-wide (non-feature) pieces
@@ -287,6 +301,61 @@ stack? }`. Produced solely by `middleware/errorHandler.js`; stack only in dev fo
   mostly use phones, often mid-range Android on slow data. Use the tokens in `index.css`, never
   raw hex values in components (chart SVG attributes use `components/charts/chartTheme.js`).
 - `RoleRoute`/`ProtectedRoute` are UX only — **security is enforced by the API**.
+- **Errors in words:** show API errors through `lib/errorMessages.js` (`friendlyError`,
+  `errorMessage`). It has a message for every server `ERROR_CODES` value (a unit test compares
+  the two lists), prefers the code, then the status, and keeps the server's own message where it
+  is more specific (403/404/409/422, login 401s, roll numbers, clashes). Forms, `ErrorState` and
+  toasts all use it. Adding a server error code means adding its message here.
+- **Live updates:** the shell mounts `useRealtimeInvalidation`: every pushed notification
+  invalidates the query roots it is about (`lib/realtimeInvalidation.js`: absence → attendance,
+  results, meetings, notices) plus every dashboard. Query keys start with those roots
+  (`['attendance', …]`, `['results', …]`, `['meetings', …]`, `['notices', …]`,
+  `['dashboard', role]`). Mutations invalidate their root and `['dashboard']`. There is no
+  separate "data changed" socket event yet.
+- **Loading / error / empty:** wrap queries in `<QueryState query loading>` (skeleton, then
+  ErrorState with "Try again"); every list has an EmptyState.
+- **Unsaved work:** `useUnsavedChanges(isDirty)` → `{ blocker, allowNavigation }`; render
+  `<UnsavedChangesDialog blocker />`, and call `allowNavigation()` right before navigating
+  away after a successful save.
+- **URLs:** build them with `config/paths.js` (`teacherPaths.takeAttendance({ classId, … })`);
+  filters and selections live in the query string, so links and the back button work.
+
+## Teacher screens
+
+| Route (`/teacher/…`)                              | Screen                                                                                          |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| (index)                                           | Dashboard: today's classes (take attendance), stats, 30-day charts, absentees, drafts, meetings |
+| `attendance`                                      | Take attendance: class, day chips, roster, sticky counts, confirm                               |
+| `attendance/records`                              | Day view per class-section; edit a record or a whole day with a reason                          |
+| `attendance/summary`                              | Range and subject filters, daily rate chart, students by percent                                |
+| `students/:id/attendance`                         | One student: session %, by subject, calendar, recent days                                       |
+| `results`, `results/new`, `…/:id/edit`            | Assessments (All / Drafts / Published) and the create / edit form                               |
+| `results/:id`                                     | Result entry (grid on desktop, cards on phones), publish, edits                                 |
+| `meetings`, `meetings/new`, `…/:id`, `…/:id/edit` | List, own-scope form, details with replies, cancel                                              |
+| `notices`, `notifications`                        | Read-only notices; notifications (both routes exist for every role)                             |
+
+- **Lookups:** `GET /api/settings/school` (any signed-in user: rules, today's Dhaka date, the
+  session) and `GET /api/teacher-assignments/mine` (teachers: own class-sections with subjects,
+  timetable and `wholeClasses`). Both are cached for 5 minutes (`features/school`).
+- **Take attendance** (built for speed on a phone):
+  - Day chips come from `markableSchoolDays()` (`utils/schoolDays.js`): today and earlier
+    school days within `attendanceBackdateDays`, skipping off days and days outside the
+    session. A day from the URL that isn't allowed shows the OFF_DAY / BACKDATE_LIMIT message
+    (fallback only).
+  - Everyone starts Present; rows are memoised native radio groups (48px buttons). The request
+    sends `defaultStatus: 'present'` plus the exceptions only.
+  - Subjects: the sheet's scheduled ones. When some are already taken, only the rest are sent
+    (`subjectIds`). When none are scheduled, the teacher ticks their own subjects.
+  - Double submission is blocked (ref + disabled button), and `ALREADY_MARKED` or an
+    already-taken day shows "Already taken — view or edit".
+- **Result entry:** grades are previewed with `utils/grading.js` (same threshold rule as the
+  server) using the assessment's snapshot once published and the school scale for drafts. Drafts
+  send only touched rows (`features/results/entryRows.js`); API errors `entries.<i>.<field>`
+  are mapped back to students. Publish saves first if needed. `RESULTS_INCOMPLETE` returns
+  `details.students` (`{ studentId, name, rollNo, problem }`), which are highlighted.
+- **Meetings:** teachers invite their class-sections, whole classes from `wholeClasses`, or
+  chosen students (roster from the class summary). Date and time are Dhaka wall-clock
+  (`schoolDateTimeParts` for editing).
 
 ## Design system (direction D "Guava")
 
@@ -758,7 +827,13 @@ All routes use `authenticate` + `authorize('admin')` and live in `routes/user.ro
 **Rate limits** (in memory, per app instance; `req.ip` honours `TRUST_PROXY`)
 
 - Login: 5 failures / 15 min per IP + identifier, plus 30 failures / 15 min per IP.
-- Register: 5 / hour. Refresh: 60 / 15 min.
+- Register: 5 / hour.
+- **Refresh**, keyed per session: `RATE_LIMIT_REFRESH_SESSION_MAX` (default 60 / 15 min) per
+  refresh-token family (it survives rotation; an unknown token is keyed by its hash; no cookie is
+  skipped), plus a loose per-IP backstop `RATE_LIMIT_REFRESH_IP_MAX` (default 600 / 15 min).
+  Bangladeshi mobile carriers put many guardians behind shared IPs, so the per-IP limit must
+  never be the tight one. Tests pass `createApp({ rateLimits: { refreshSessionMax,
+refreshIpMax } })`.
 - Running several instances would need a shared store.
 
 **Other rules**
@@ -897,6 +972,38 @@ All routes use `authenticate` + `authorize('admin')` and live in `routes/user.ro
 - Socket tests (`realtime.test.js`) run `initRealtime` on a random port and connect with
   `socket.io-client` using `transports: ['websocket']`.
 
+## E2E suite (`e2e/`, Playwright)
+
+- `npm run e2e` starts its own stack (`e2e/playwright.config.js`):
+  - the API on :5100 from `server/src/scripts/e2eServer.js`: an **in-memory MongoDB replica
+    set** (the same approach as `tests/helpers/db.js`) seeded with `seedDatabase({ e2e: true })`
+    at start-up (about a second). No Atlas, no slow reseed, and no way to touch
+    `littlesteps_dev`;
+  - the Vite dev client on :5174 proxying `/api` and `/socket.io` to it.
+  - Rate limits are raised through env for the run only. Browsers: Playwright's own Chromium
+    (`npx playwright install chromium` once).
+- **Parallel safety:** spec files run in parallel (3 workers), tests inside a file in order
+  (`fullyParallel: false`; data-changing specs also use `mode: 'serial'`). Every spec that
+  changes data owns different people, so they never collide:
+
+  | Spec                           | Owns (changes)                                              |
+  | ------------------------------ | ----------------------------------------------------------- |
+  | `attendance.spec.js`           | farhana.akter, Playgroup-A/B attendance on the unmarked day |
+  | `results.spec.js`              | tahmina.rahman, the KG-1-A draft Math test                  |
+  | `meetings.spec.js`             | shirin.akhter, a new KG-2-A meeting                         |
+  | `realtime.spec.js`             | admin override of kg2-b-02's attendance                     |
+  | `notifications.spec.js`        | nur-b-01's notifications (read state)                       |
+  | `password-change.spec.js`      | a new user it creates (`e2e.newteacher`)                    |
+  | `auth.spec.js`, `a11y.spec.js` | read-only (sessions only)                                   |
+
+  A new data-changing spec takes an unused class-section or student and adds a row here.
+
+- `npm run e2e:screens` (`screens.spec.js`, project `screens`): every teacher screen at 375
+  and 1280 px, including dialogs, loading and error states, into `docs/design/screens/teacher/`.
+  Read-only; it uses `reducedMotion: 'reduce'` so charts are not caught mid-animation.
+- Assert what the user sees (roles, labels, text); use the API (`apiAs` in `tests/helpers.js`)
+  only for set-up and for checking side effects such as notifications.
+
 ## Don'ts
 
 - No business logic in controllers or route files; no Axios calls in components.
@@ -909,6 +1016,7 @@ All routes use `authenticate` + `authorize('admin')` and live in `routes/user.ro
 - Don't add a protected route without `authenticate` + `authorize`, plus an ownership guard when
   it is scoped to a class-section or a student.
 - Don't change a schema without a migration.
+- Don't point browser checks at `littlesteps_dev`: use the E2E suite (in-memory database).
 - Don't show a status by colour alone (use `config/statuses.js`), put the full logo on a dark
   surface, use Cerise for success, or import full `zod` or chart components on the login path.
 - Don't emit sockets or send emails inside a transaction; queue them in the outbox.

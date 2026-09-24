@@ -465,28 +465,34 @@ export async function publishAssessment(actor, id, meta = {}) {
   const byStudent = new Map(results.map((r) => [String(r.studentId), r]));
   const snapshot = snapshotScale(settings.gradingScale);
 
-  const problems = [];
+  // details.students lets the UI highlight the rows; errors[] keeps the readable messages.
+  const incomplete = [];
   for (const p of roster) {
-    const label = `${p.userId.name} (roll ${p.rollNo})`;
     const result = byStudent.get(String(p.userId._id));
-    if (!result) problems.push({ field: 'students', message: `${label}: no entry` });
-    else if (missingPart(assessment, result)) {
-      problems.push({
-        field: 'students',
-        message: `${label}: ${missingPart(assessment, result)} missing`,
-      });
-    } else if (result.grade && !scaleGrades(snapshot).includes(result.grade)) {
-      problems.push({
-        field: 'students',
-        message: `${label}: grade ${result.grade} is no longer in the grading scale`,
+    let problem = null;
+    if (!result) problem = 'no entry';
+    else if (missingPart(assessment, result))
+      problem = `${missingPart(assessment, result)} missing`;
+    else if (result.grade && !scaleGrades(snapshot).includes(result.grade)) {
+      problem = `grade ${result.grade} is no longer in the grading scale`;
+    }
+    if (problem) {
+      incomplete.push({
+        studentId: String(p.userId._id),
+        name: p.userId.name,
+        rollNo: p.rollNo,
+        problem,
       });
     }
   }
-  if (problems.length) {
+  if (incomplete.length) {
     throw ApiError.unprocessable(
-      `Cannot publish: ${problems.length} student(s) need a complete entry.`,
-      problems,
-      { code: ERROR_CODES.RESULTS_INCOMPLETE },
+      `Cannot publish: ${incomplete.length} student(s) need a complete entry.`,
+      incomplete.map((s) => ({
+        field: 'students',
+        message: `${s.name} (roll ${s.rollNo}): ${s.problem}`,
+      })),
+      { code: ERROR_CODES.RESULTS_INCOMPLETE, details: { students: incomplete } },
     );
   }
 

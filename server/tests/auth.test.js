@@ -363,6 +363,66 @@ describe('login rate limiting', () => {
   });
 });
 
+describe('refresh rate limiting (per session, with a per-IP backstop)', () => {
+  /** Refresh `times` times, following each rotation; returns the statuses. */
+  async function refreshRepeatedly(testApp, cookie, times) {
+    const statuses = [];
+    let current = cookie;
+    for (let i = 0; i < times; i += 1) {
+      const res = await request(testApp).post('/api/auth/refresh').set('Cookie', current);
+      statuses.push(res.status);
+      current = refreshCookieFrom(res) ?? current;
+    }
+    return statuses;
+  }
+
+  it('blocks one session that exceeds its limit, even though its token rotates', async () => {
+    const testApp = createApp({ rateLimits: { refreshSessionMax: 3, refreshIpMax: 1000 } });
+    const user = await createUser();
+    const res = await request(testApp)
+      .post('/api/auth/login')
+      .send({ identifier: user.username, password: DEFAULT_PASSWORD });
+
+    const statuses = await refreshRepeatedly(testApp, refreshCookieFrom(res), 4);
+    expect(statuses).toEqual([200, 200, 200, 429]);
+  });
+
+  it('does not block many different sessions from the same IP (shared carrier IPs)', async () => {
+    const testApp = createApp({ rateLimits: { refreshSessionMax: 3, refreshIpMax: 1000 } });
+    const statuses = [];
+    for (let i = 0; i < 5; i += 1) {
+      const user = await createUser();
+      const res = await request(testApp)
+        .post('/api/auth/login')
+        .send({ identifier: user.username, password: DEFAULT_PASSWORD });
+      statuses.push(...(await refreshRepeatedly(testApp, refreshCookieFrom(res), 3)));
+    }
+    // 15 refreshes from one IP, 3 per session: all allowed.
+    expect(statuses).toHaveLength(15);
+    expect(statuses.every((status) => status === 200)).toBe(true);
+  });
+
+  it('keeps a per-IP backstop, and anonymous refreshes only count towards it', async () => {
+    const testApp = createApp({ rateLimits: { refreshSessionMax: 100, refreshIpMax: 4 } });
+    const anonymous = [];
+    for (let i = 0; i < 4; i += 1) {
+      anonymous.push((await request(testApp).post('/api/auth/refresh')).status);
+    }
+    expect(anonymous).toEqual([401, 401, 401, 401]); // NO_SESSION, not rate limited yet
+    expect((await request(testApp).post('/api/auth/refresh')).status).toBe(429);
+  });
+
+  it('limits an unknown token by the token itself', async () => {
+    const testApp = createApp({ rateLimits: { refreshSessionMax: 2, refreshIpMax: 1000 } });
+    const bogus = 'ls_rt=not-a-real-token';
+    const statuses = [];
+    for (let i = 0; i < 3; i += 1) {
+      statuses.push((await request(testApp).post('/api/auth/refresh').set('Cookie', bogus)).status);
+    }
+    expect(statuses).toEqual([401, 401, 429]);
+  });
+});
+
 describe('POST /api/auth/register', () => {
   const registration = (overrides = {}) => ({
     name: 'Ayaan Rahman',

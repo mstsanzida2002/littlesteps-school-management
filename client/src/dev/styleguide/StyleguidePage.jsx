@@ -15,6 +15,7 @@ import {
   NavigationSection,
   OverlaySection,
 } from './InteractiveSections.jsx';
+import { TeacherSection } from './TeacherSections.jsx';
 
 const LINKS = [
   ['brand', 'Brand'],
@@ -30,6 +31,7 @@ const LINKS = [
   ['data', 'Table'],
   ['identity', 'Avatars'],
   ['charts', 'Charts'],
+  ['teacher', 'Teacher'],
 ];
 
 /**
@@ -82,6 +84,7 @@ export default function StyleguidePage() {
         <DataSection />
         <IdentitySection />
         <ChartSection />
+        <TeacherSection />
       </main>
     </div>
   );

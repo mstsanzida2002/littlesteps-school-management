@@ -9,12 +9,23 @@
  * Slots are half-open [start, end), so 09:00–09:30 and 09:30–10:00 do not clash.
  */
 import { ACCOUNT_STATUS, ASSIGNMENT_STATUS, ERROR_CODES, ROLES } from '../config/constants.js';
-import { Assessment, Attendance, Subject, TeacherAssignment, User } from '../models/index.js';
+import {
+  Assessment,
+  Attendance,
+  Section,
+  Subject,
+  TeacherAssignment,
+  User,
+} from '../models/index.js';
 import { ApiError } from '../utils/ApiError.js';
 import { paginate } from '../utils/listQuery.js';
 import { recordAudit } from './audit.service.js';
 import { describeCounts } from './reference.service.js';
-import { requireActiveSession, requireSectionInClass } from './lookup.service.js';
+import {
+  classSectionLabel,
+  requireActiveSession,
+  requireSectionInClass,
+} from './lookup.service.js';
 
 const POPULATE = [
   { path: 'teacherId', select: 'name username status' },
@@ -265,4 +276,68 @@ export async function removeAssignment(actor, id, meta = {}) {
     meta,
   });
   return { outcome: 'deleted', message: 'Assignment deleted.' };
+}
+
+/**
+ * GET /api/teacher-assignments/mine — the signed-in teacher's active assignments in the active
+ * session, grouped by class-section (subjects with their timetable), plus the classes they
+ * teach in every section of (the only classes they may invite as a whole to a meeting).
+ */
+export async function myAssignments(actor) {
+  const session = await requireActiveSession();
+  const assignments = await TeacherAssignment.find({
+    teacherId: actor.id,
+    sessionId: session._id,
+    status: ASSIGNMENT_STATUS.ACTIVE,
+  })
+    .populate('classId', 'name order')
+    .populate('sectionId', 'name')
+    .populate('subjectId', 'name code')
+    .lean();
+
+  const groups = new Map();
+  for (const a of assignments) {
+    const key = `${a.classId._id}:${a.sectionId._id}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        classId: a.classId._id,
+        className: a.classId.name,
+        classOrder: a.classId.order,
+        sectionId: a.sectionId._id,
+        sectionName: a.sectionId.name,
+        label: classSectionLabel(a.classId, a.sectionId),
+        subjects: [],
+      });
+    }
+    groups.get(key).subjects.push({
+      _id: a.subjectId._id,
+      name: a.subjectId.name,
+      code: a.subjectId.code,
+      schedule: a.schedule.map(({ day, startTime, endTime }) => ({ day, startTime, endTime })),
+    });
+  }
+  const classSections = [...groups.values()].sort(
+    (x, y) => x.classOrder - y.classOrder || x.sectionName.localeCompare(y.sectionName),
+  );
+  for (const cs of classSections) cs.subjects.sort((x, y) => x.name.localeCompare(y.name));
+
+  // Whole classes: every section of the class appears among the teacher's class-sections.
+  const classIds = [...new Set(classSections.map((cs) => String(cs.classId)))];
+  const sections = await Section.find({ classId: { $in: classIds } }, { classId: 1 }).lean();
+  const wholeClasses = classIds
+    .filter((id) =>
+      sections
+        .filter((s) => String(s.classId) === id)
+        .every((s) => classSections.some((cs) => String(cs.sectionId) === String(s._id))),
+    )
+    .map((id) => {
+      const cs = classSections.find((c) => String(c.classId) === id);
+      return { classId: cs.classId, name: cs.className };
+    });
+
+  return {
+    session: { _id: session._id, name: session.name },
+    classSections: classSections.map(({ classOrder: _order, ...rest }) => rest),
+    wholeClasses,
+  };
 }

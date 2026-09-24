@@ -9,6 +9,7 @@ import { Sidebar } from '../components/layout/Sidebar.jsx';
 import { Skeleton, SkeletonCard } from '../components/ui/Skeleton.jsx';
 import { NAV_ITEMS, ROLE_HOME, ROUTES } from '../config/constants.js';
 import { useAuth } from '../features/auth/hooks/useAuth.js';
+import { useRealtimeInvalidation } from '../features/notifications/hooks/useRealtimeInvalidation.js';
 
 const COLLAPSED_KEY = 'littlesteps.sidebar.collapsed';
 
@@ -45,6 +46,8 @@ export default function DashboardLayout({ role }) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [moreOpen, setMoreOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  // Pushed notifications refresh the data they are about (dashboards stay live).
+  useRealtimeInvalidation();
 
   const items = NAV_ITEMS[role] ?? [];
   const homeTo = ROLE_HOME[role];

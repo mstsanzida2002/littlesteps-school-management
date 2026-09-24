@@ -21,6 +21,10 @@ const envSchema = z
       .positive()
       .default(15 * 60 * 1000),
     RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
+    // POST /auth/refresh per 15 min. Per session (refresh-token family) is the real limit; the
+    // per-IP one is a loose backstop because mobile carriers put many guardians behind one IP.
+    RATE_LIMIT_REFRESH_SESSION_MAX: z.coerce.number().int().positive().default(60),
+    RATE_LIMIT_REFRESH_IP_MAX: z.coerce.number().int().positive().default(600),
 
     // --- Auth ---
     JWT_ACCESS_SECRET: z

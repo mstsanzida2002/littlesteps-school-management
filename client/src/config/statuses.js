@@ -12,6 +12,8 @@ import {
   CalendarClock,
   CalendarX,
   CircleCheck,
+  CircleCheckBig,
+  CircleDotDashed,
   CircleDashed,
   CircleX,
   Clock,
@@ -52,6 +54,12 @@ export const STATUS_GROUPS = Object.freeze({
     will_attend: { label: 'Will attend', icon: CircleCheck, tone: 'present' },
     cannot_attend: { label: 'Cannot attend', icon: CircleX, tone: 'absent' },
     no_response: { label: 'No response', icon: CircleDashed, tone: 'neutral' },
+  }),
+  /** Attendance taking for a class-section today (GET /api/attendance/today). */
+  marking: define({
+    marked: { label: 'Marked', icon: CircleCheckBig, tone: 'present' },
+    partial: { label: 'Partly marked', icon: CircleDotDashed, tone: 'late' },
+    pending: { label: 'To mark', icon: Hourglass, tone: 'info' },
   }),
   /** Derived meeting state (from cancelledAt and dateTime). */
   meeting: define({

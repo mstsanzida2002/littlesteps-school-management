@@ -1,9 +1,10 @@
+import { REFRESH_COOKIE } from '../config/constants.js';
 import { env } from '../config/env.js';
 import * as authService from '../services/auth.service.js';
 import { sendCreated, sendSuccess } from '../utils/apiResponse.js';
 import { requestMeta } from '../utils/requestMeta.js';
 
-export const REFRESH_COOKIE = 'ls_rt';
+export { REFRESH_COOKIE };
 
 // Same-origin in dev (Vite proxy) and prod (Vercel rewrite), so Lax is enough and the cookie
 // is first-party everywhere. Scoped to /api/auth so it is not sent with every API call.

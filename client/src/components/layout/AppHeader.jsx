@@ -2,6 +2,7 @@ import { KeyRound, LogOut } from 'lucide-react';
 import { Link } from 'react-router';
 
 import { ROLE_LABELS, ROUTES } from '../../config/constants.js';
+import { notificationsPath } from '../../config/paths.js';
 import { formatSchoolDate, todayDateKey } from '../../utils/date.js';
 import { NotificationBell } from '../../features/notifications/components/NotificationBell.jsx';
 import { LogoLink } from '../brand/Logo.jsx';
@@ -41,7 +42,7 @@ export function AppHeader({ user, homeTo, onOpenAccount, onLogout, loggingOut })
           </p>
         </div>
 
-        <NotificationBell />
+        <NotificationBell to={notificationsPath(user?.role)} />
 
         {/* Phones and tablets: the avatar opens the account sheet. */}
         <button

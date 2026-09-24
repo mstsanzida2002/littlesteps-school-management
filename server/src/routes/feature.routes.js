@@ -13,6 +13,8 @@ import * as dashboards from '../services/dashboard.service.js';
 import * as meetings from '../services/meeting.service.js';
 import * as notices from '../services/notice.service.js';
 import * as results from '../services/results.service.js';
+import * as settings from '../services/settings.service.js';
+import * as assignments from '../services/teacherAssignment.service.js';
 import { sendCreated, sendSuccess } from '../utils/apiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { requestMeta } from '../utils/requestMeta.js';
@@ -294,6 +296,33 @@ export function createDashboardRouter() {
     '/student',
     authorize(STUDENT),
     h(async (req, res) => sendSuccess(res, { data: await dashboards.studentDashboard(req.user) })),
+  );
+  return router;
+}
+
+/**
+ * Read-only lookups for non-admins. Mounted before the admin-only /settings and
+ * /teacher-assignments routers (routes/index.js), which would otherwise answer 403.
+ */
+export function createSchoolSettingsRouter() {
+  const router = Router();
+  router.get(
+    '/',
+    authenticate,
+    asyncHandler(async (req, res) => sendSuccess(res, { data: await settings.schoolSettings() })),
+  );
+  return router;
+}
+
+export function createMyAssignmentsRouter() {
+  const router = Router();
+  router.get(
+    '/',
+    authenticate,
+    authorize(ROLES.TEACHER),
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, { data: await assignments.myAssignments(req.user) }),
+    ),
   );
   return router;
 }

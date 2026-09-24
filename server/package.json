@@ -12,7 +12,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "seed": "node src/seed/seed.js",
-    "migrate": "node src/scripts/migrate.js"
+    "migrate": "node src/scripts/migrate.js",
+    "e2e:api": "node src/scripts/e2eServer.js"
   },
   "dependencies": {
     "bcryptjs": "3.0.3",

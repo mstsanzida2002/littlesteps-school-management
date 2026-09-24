@@ -25,6 +25,8 @@ const parseSort = (sort) =>
  *   mobile?: 'title' | 'subtitle' | 'field' (default) | 'actions' | 'hidden',
  * }]
  * `sort` / `onSortChange` use the API's format ('name' or '-name').
+ * `rowClassName(row)` highlights rows (e.g. below the attendance threshold); pair it with text,
+ * because a tint alone is colour only.
  */
 export function DataTable({
   columns,
@@ -36,6 +38,7 @@ export function DataTable({
   empty,
   sort,
   onSortChange,
+  rowClassName,
   className,
 }) {
   const desktop = useIsDesktop();
@@ -45,11 +48,13 @@ export function DataTable({
 
   return desktop ? (
     <TableView
-      {...{ columns, rows, keyOf, caption, loading, skeletonRows, sort, onSortChange, className }}
+      {...{ columns, rows, keyOf, caption, loading, skeletonRows, sort, onSortChange }}
+      {...{ rowClassName, className }}
     />
   ) : (
     <CardList
-      {...{ columns, rows, keyOf, caption, loading, skeletonRows, sort, onSortChange, className }}
+      {...{ columns, rows, keyOf, caption, loading, skeletonRows, sort, onSortChange }}
+      {...{ rowClassName, className }}
     />
   );
 }
@@ -63,6 +68,7 @@ function TableView({
   skeletonRows,
   sort,
   onSortChange,
+  rowClassName,
   className,
 }) {
   const current = parseSort(sort);
@@ -128,7 +134,10 @@ function TableView({
             : rows.map((row, i) => (
                 <tr
                   key={keyOf(row, i)}
-                  className="border-b border-line last:border-0 hover:bg-blush-50/60"
+                  className={cn(
+                    'border-b border-line last:border-0 hover:bg-blush-50/60',
+                    rowClassName?.(row),
+                  )}
                 >
                   {columns.map((column) => (
                     <td key={column.key} className={cn('px-4 py-3', ALIGN[column.align ?? 'left'])}>
@@ -152,6 +161,7 @@ function CardList({
   skeletonRows,
   sort,
   onSortChange,
+  rowClassName,
   className,
 }) {
   const title = columns.find((c) => c.mobile === 'title') ?? columns[0];
@@ -197,7 +207,10 @@ function CardList({
           : rows.map((row, i) => (
               <li
                 key={keyOf(row, i)}
-                className="rounded-card border border-line bg-surface p-4 shadow-card"
+                className={cn(
+                  'rounded-card border border-line bg-surface p-4 shadow-card',
+                  rowClassName?.(row),
+                )}
               >
                 <div className="font-bold text-ink">{cellValue(title, row)}</div>
                 {subtitle && <div className="text-sm text-muted">{cellValue(subtitle, row)}</div>}

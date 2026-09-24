@@ -16,6 +16,7 @@ import { createApiRouter } from './routes/index.js';
 /**
  * @param {object} [options]
  * @param {boolean} [options.selfRegistrationEnabled] override env.SELF_REGISTRATION_ENABLED
+ * @param {{ refreshSessionMax?: number, refreshIpMax?: number }} [options.rateLimits] test overrides
  * @param {import('express').Router} [options.testRouter] mounted at /api/test (tests only)
  */
 export function createApp(options = {}) {

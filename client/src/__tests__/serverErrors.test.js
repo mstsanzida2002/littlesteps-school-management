@@ -47,11 +47,12 @@ describe('splitServerErrors', () => {
     expect(result.formMessage).toBe('Section does not belong to the class Invalid date');
   });
 
-  it('uses the server message for other errors, and a friendly one for a bare 422', () => {
+  it('uses the shared friendly messages for everything that is not a field error', () => {
     const conflict = new ApiClientError({ status: 409, message: 'Already marked' });
     const offline = new ApiClientError({ status: 0, message: 'Cannot reach the server.' });
     expect(splitServerErrors(conflict, ['x']).formMessage).toBe('Already marked');
-    expect(splitServerErrors(offline).formMessage).toBe('Cannot reach the server.');
+    // Everything else reads as in lib/errorMessages.js.
+    expect(splitServerErrors(offline).formMessage).toMatch(/Check your internet connection/);
     expect(splitServerErrors(error422([])).formMessage).toBe(
       'Something went wrong. Please try again.',
     );

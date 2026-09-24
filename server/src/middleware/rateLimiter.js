@@ -1,6 +1,8 @@
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 
+import { REFRESH_COOKIE } from '../config/constants.js';
 import { env } from '../config/env.js';
+import { hashToken, refreshFamilyOf } from '../services/token.service.js';
 import { ApiError } from '../utils/ApiError.js';
 
 // Limiters are created per app (factories) so each createApp() — and each test — gets its own
@@ -26,7 +28,13 @@ export const createGlobalLimiter = () =>
     skip: (req) => req.path === '/health',
   });
 
-export function createAuthLimiters() {
+/**
+ * @param {{ refreshSessionMax?: number, refreshIpMax?: number }} [limits] overrides for tests
+ */
+export function createAuthLimiters({
+  refreshSessionMax = env.RATE_LIMIT_REFRESH_SESSION_MAX,
+  refreshIpMax = env.RATE_LIMIT_REFRESH_IP_MAX,
+} = {}) {
   return {
     /** 5 failed logins per 15 min per IP + identifier (successful logins don't count). */
     login: rateLimit({
@@ -59,11 +67,33 @@ export function createAuthLimiters() {
       message: 'Too many registration attempts. Please try again later.',
     }),
 
-    refresh: rateLimit({
+    /**
+     * Token refreshes, per session: keyed by the refresh token's family (it survives rotation),
+     * or by the token itself when it is unknown. Requests without a cookie (anonymous app
+     * loads) are skipped here and only count towards the per-IP backstop.
+     */
+    refreshPerSession: rateLimit({
       ...baseOptions,
       windowMs: FIFTEEN_MINUTES,
-      limit: 60,
+      limit: refreshSessionMax,
+      skip: (req) => !req.cookies?.[REFRESH_COOKIE],
+      keyGenerator: async (req) => {
+        const token = req.cookies[REFRESH_COOKIE];
+        const family = await refreshFamilyOf(token);
+        return family ? `family:${family}` : `token:${hashToken(token)}`;
+      },
       message: 'Too many requests, please try again later',
+    }),
+
+    /**
+     * Loose per-IP backstop. Bangladeshi mobile carriers put many users behind shared IPs, so
+     * this must stay far above what one busy school morning sends from one carrier IP.
+     */
+    refreshPerIp: rateLimit({
+      ...baseOptions,
+      windowMs: FIFTEEN_MINUTES,
+      limit: refreshIpMax,
+      message: 'Too many requests from this network, please try again in a few minutes',
     }),
   };
 }

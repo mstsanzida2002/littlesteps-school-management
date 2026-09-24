@@ -19,6 +19,9 @@ export const ASSIGNMENT_STATUS = Object.freeze({
 });
 
 /** Machine-readable `code` values in error responses (clients branch on these, not messages). */
+/** Name of the HTTP-only refresh-token cookie (path /api/auth). */
+export const REFRESH_COOKIE = 'ls_rt';
+
 export const ERROR_CODES = Object.freeze({
   PASSWORD_CHANGE_REQUIRED: 'PASSWORD_CHANGE_REQUIRED',
   SESSION_SWITCH_CONFIRMATION_REQUIRED: 'SESSION_SWITCH_CONFIRMATION_REQUIRED',

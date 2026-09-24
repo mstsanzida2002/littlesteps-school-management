@@ -53,7 +53,7 @@ export function FilterBar({
           onClick={() => setOpen(true)}
           aria-label={activeCount ? `${label}, ${activeCount} active` : label}
         >
-          <span className="sr-only sm:not-sr-only">{label}</span>
+          <span className={search ? 'sr-only sm:not-sr-only' : undefined}>{label}</span>
           {activeCount > 0 && (
             <span className="min-w-6 rounded-full bg-brand-800 px-1.5 text-center text-xs leading-6 text-white">
               {activeCount}

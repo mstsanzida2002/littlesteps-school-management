@@ -88,3 +88,25 @@ export function formatDateTime(value, { weekday = false } = {}) {
   const date = `${weekday ? `${p.weekday}, ` : ''}${p.day} ${p.month} ${p.year}`;
   return `${date}, ${p.hour}:${p.minute} ${p.dayPeriod.toLowerCase()}`;
 }
+
+const dhakaPartsFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: SCHOOL_TIMEZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+/** A real instant as the Dhaka wall-clock date and time: { date: 'YYYY-MM-DD', time: 'HH:mm' }. */
+export function schoolDateTimeParts(value) {
+  const p = partsOf(dhakaPartsFormatter, new Date(value));
+  return { date: `${p.year}-${p.month}-${p.day}`, time: `${p.hour}:${p.minute}` };
+}
+
+/** "10:00 am" for a real instant, in Dhaka. */
+export function formatSchoolTime(value) {
+  const p = partsOf(schoolParts, new Date(value));
+  return `${p.hour}:${p.minute} ${p.dayPeriod.toLowerCase()}`;
+}

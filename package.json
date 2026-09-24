@@ -5,7 +5,8 @@
   "description": "LittleSteps — nursery school management system (MERN monorepo)",
   "workspaces": [
     "server",
-    "client"
+    "client",
+    "e2e"
   ],
   "engines": {
     "node": ">=20.19"
@@ -22,7 +23,9 @@
     "lint": "npm run lint --workspaces",
     "lint:fix": "npm run lint:fix --workspaces",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "e2e": "npm run e2e -w e2e",
+    "e2e:screens": "npm run e2e:screens -w e2e"
   },
   "devDependencies": {
     "concurrently": "10.0.5",

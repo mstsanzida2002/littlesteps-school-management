@@ -187,6 +187,12 @@ describe('publishing', () => {
       'Nusrat Jahan (roll 2): marks missing',
       'Arham Hossain (roll 3): no entry',
     ]);
+    // Structured for the UI (highlighting rows): one item per student, with the id.
+    expect(res.body.details.students).toEqual([
+      expect.objectContaining({ name: 'Nusrat Jahan', rollNo: 2, problem: 'marks missing' }),
+      expect.objectContaining({ name: 'Arham Hossain', rollNo: 3, problem: 'no entry' }),
+    ]);
+    expect(res.body.details.students.every((x) => /^[a-f0-9]{24}$/.test(x.studentId))).toBe(true);
     expect((await Assessment.findById(id)).status).toBe('draft');
   });
 

@@ -1,7 +1,8 @@
 /**
  * System settings (FR-ADM-10). One document; changes are audited with before/after values.
  */
-import { Settings } from '../models/index.js';
+import { AcademicSession, Settings } from '../models/index.js';
+import { toDateKey, todaySchoolDate } from '../utils/date.js';
 import { withBandRanges } from '../models/settings.model.js';
 import { diffChanges, recordAudit } from './audit.service.js';
 
@@ -50,4 +51,27 @@ export async function updateSettings(actor, changes, meta = {}) {
     });
   }
   return present(settings);
+}
+
+/**
+ * GET /api/settings/school — what every signed-in user may know: the school's rules (none of
+ * the settings are sensitive), today's school date (Asia/Dhaka, from the server clock) and the
+ * active session's dates. Teachers need them for date pickers and grade previews.
+ */
+export async function schoolSettings() {
+  const [settings, session] = await Promise.all([
+    Settings.get(),
+    AcademicSession.findOne({ isActive: true }, { name: 1, startDate: 1, endDate: 1 }).lean(),
+  ]);
+  const { updatedAt: _updatedAt, ...rules } = present(settings);
+  return {
+    ...rules,
+    today: toDateKey(todaySchoolDate()),
+    session: session && {
+      _id: session._id,
+      name: session.name,
+      startDate: toDateKey(session.startDate),
+      endDate: toDateKey(session.endDate),
+    },
+  };
 }
