@@ -88,6 +88,12 @@ export default function DashboardLayout({ role }) {
                 <p className="text-sm text-slate-500 capitalize">{user.role}</p>
               </div>
             )}
+            <Link
+              to={ROUTES.CHANGE_PASSWORD}
+              className="hidden rounded-lg px-3 py-2 font-semibold text-slate-600 hover:bg-slate-100 sm:block"
+            >
+              Change password
+            </Link>
             <button
               type="button"
               onClick={onLogout}

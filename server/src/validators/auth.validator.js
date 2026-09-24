@@ -39,27 +39,36 @@ export const adminResetPasswordSchema = z.object({
   newPassword: passwordPolicy,
 });
 
-const optionalEmail = z
+export const optionalEmail = z
   .union([z.literal(''), z.email('Invalid email address').max(254)])
   .optional()
   .transform((value) => value || undefined);
 
+export const bdPhone = z
+  .string()
+  .trim()
+  .regex(BD_PHONE_RE, 'Enter a Bangladeshi mobile number (01XXXXXXXXX)');
+
+export const usernameField = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(USERNAME_RE, 'Username must be 3–32 characters: a-z, 0-9, dot, underscore, hyphen');
+
+export const guardianInput = z.object({
+  name: z.string().trim().min(2).max(100),
+  relation: z.enum(GUARDIAN_RELATIONS),
+  phone: bdPhone,
+  email: optionalEmail,
+  address: z.string().trim().max(300).optional(),
+});
+
 export const registerSchema = z.object({
   name: z.string().trim().min(2).max(100),
-  username: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .regex(USERNAME_RE, 'Username must be 3–32 characters: a-z, 0-9, dot, underscore, hyphen'),
+  username: usernameField,
   email: optionalEmail,
   password: passwordPolicy,
-  guardian: z.object({
-    name: z.string().trim().min(2).max(100),
-    relation: z.enum(GUARDIAN_RELATIONS),
-    phone: z.string().trim().regex(BD_PHONE_RE, 'Enter a Bangladeshi mobile number (01XXXXXXXXX)'),
-    email: optionalEmail,
-    address: z.string().trim().max(300).optional(),
-  }),
+  guardian: guardianInput,
   dateOfBirth: dateKey.optional(),
   gender: z.enum(GENDERS).optional(),
   requestedClassId: objectId.optional(),

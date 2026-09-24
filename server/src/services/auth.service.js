@@ -1,7 +1,8 @@
 import { ACCOUNT_STATUS, ROLES } from '../config/constants.js';
-import { AuditLog, User } from '../models/index.js';
+import { User } from '../models/index.js';
 import { ApiError } from '../utils/ApiError.js';
 import { hashPassword, verifyPassword } from '../utils/password.js';
+import { recordAudit } from './audit.service.js';
 import {
   invalidateUserSessions,
   issueSession,
@@ -14,6 +15,8 @@ export const INVALID_CREDENTIALS = 'Invalid username/email or password';
 const STATUS_MESSAGES = {
   [ACCOUNT_STATUS.PENDING]: 'Your account is awaiting admin approval.',
   [ACCOUNT_STATUS.SUSPENDED]: 'Your account has been suspended. Please contact the school office.',
+  [ACCOUNT_STATUS.REJECTED]:
+    'Your registration was not approved. Please contact the school office for details.',
 };
 
 // Hash compared against when the identifier matches no user, so a missing account takes as
@@ -86,36 +89,46 @@ export async function changePassword(userId, { currentPassword, newPassword }, m
     ]);
   }
 
+  const wasRequired = user.mustChangePassword;
   user.passwordHash = await hashPassword(newPassword);
   user.passwordChangedAt = new Date();
+  user.mustChangePassword = false;
   await user.save();
 
   user.tokenVersion = await invalidateUserSessions(user._id, 'password_changed');
+  await recordAudit({
+    actorId: user._id,
+    action: 'user.password_change',
+    entityType: 'User',
+    entityId: user._id,
+    before: { mustChangePassword: wasRequired },
+    after: { mustChangePassword: false, sessionsRevoked: true },
+    meta,
+  });
   const session = await issueSession(user, meta);
   return { user: user.toJSON(), ...session };
 }
 
-/** PATCH /users/:id/password (admin) */
+/** PATCH /users/:id/password (admin): the user must choose a new password at next sign-in. */
 export async function adminResetPassword(adminId, targetUserId, newPassword, meta) {
   const passwordHash = await hashPassword(newPassword);
   const passwordChangedAt = new Date();
   const target = await User.findByIdAndUpdate(
     targetUserId,
-    { $set: { passwordHash, passwordChangedAt } },
+    { $set: { passwordHash, passwordChangedAt, mustChangePassword: true } },
     { returnDocument: 'after' },
   );
   if (!target) throw ApiError.notFound('User not found');
 
   await invalidateUserSessions(target._id, 'admin_reset');
-  await AuditLog.create({
+  // Never log the password or its hash (recordAudit strips them anyway).
+  await recordAudit({
     actorId: adminId,
     action: 'user.password_reset',
     entityType: 'User',
     entityId: target._id,
-    // Never log the password or its hash.
-    changes: { after: { passwordChangedAt, sessionsRevoked: true } },
-    ip: meta.ip,
-    userAgent: meta.userAgent,
+    after: { passwordChangedAt, mustChangePassword: true, sessionsRevoked: true },
+    meta,
   });
   return target.toJSON();
 }
@@ -136,14 +149,13 @@ export async function register(data, meta) {
     registration: { guardian, dateOfBirth, gender, requestedClassId, note },
   });
 
-  await AuditLog.create({
+  await recordAudit({
     actorId: user._id,
     action: 'user.register',
     entityType: 'User',
     entityId: user._id,
-    changes: { after: { username: user.username, role: user.role, status: user.status } },
-    ip: meta.ip,
-    userAgent: meta.userAgent,
+    after: { username: user.username, role: user.role, status: user.status },
+    meta,
   });
 
   return { id: user._id, username: user.username, status: user.status };

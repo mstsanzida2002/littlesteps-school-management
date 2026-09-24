@@ -13,6 +13,7 @@ import RoleRoute from '../routes/RoleRoute.jsx';
 // Pages are code-split; layouts wrap <Outlet /> in <Suspense>.
 const HomePage = lazy(() => import('../pages/HomePage.jsx'));
 const LoginPage = lazy(() => import('../features/auth/pages/LoginPage.jsx'));
+const ChangePasswordPage = lazy(() => import('../features/auth/pages/ChangePasswordPage.jsx'));
 const AdminDashboardPage = lazy(() => import('../features/admin/pages/AdminDashboardPage.jsx'));
 const TeacherDashboardPage = lazy(
   () => import('../features/teacher/pages/TeacherDashboardPage.jsx'),
@@ -42,6 +43,10 @@ export const router = createBrowserRouter([
       {
         element: <ProtectedRoute />,
         children: [
+          {
+            element: <AuthLayout />,
+            children: [{ path: ROUTES.CHANGE_PASSWORD, element: <ChangePasswordPage /> }],
+          },
           roleArea(ROLES.ADMIN, ROUTES.ADMIN, [{ index: true, element: <AdminDashboardPage /> }]),
           roleArea(ROLES.TEACHER, ROUTES.TEACHER, [
             { index: true, element: <TeacherDashboardPage /> },

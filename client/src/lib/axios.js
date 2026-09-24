@@ -17,11 +17,14 @@ export const api = axios.create({
 
 /** Normalized error thrown by every API call. */
 export class ApiClientError extends Error {
-  constructor({ message, status, errors, cause }) {
+  constructor({ message, status, code, errors, details, cause }) {
     super(message);
     this.name = 'ApiClientError';
     this.status = status;
+    /** Machine-readable server code, e.g. 'PASSWORD_CHANGE_REQUIRED' (branch on this, not message). */
+    this.code = code;
     this.errors = errors;
+    this.details = details;
     this.cause = cause;
   }
 }
@@ -90,7 +93,9 @@ function toApiClientError(error) {
     return new ApiClientError({
       status,
       message: data?.message || `Request failed with status ${status}`,
+      code: data?.code,
       errors: data?.errors,
+      details: data?.details,
       cause: error,
     });
   }

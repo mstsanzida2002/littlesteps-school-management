@@ -3,7 +3,7 @@
  * Admins may access everything; teachers only their assignments in the active session;
  * students only their own records.
  */
-import { ROLES } from '../config/constants.js';
+import { ASSIGNMENT_STATUS, ROLES } from '../config/constants.js';
 import { AcademicSession, StudentProfile, TeacherAssignment } from '../models/index.js';
 
 export async function getActiveSessionId() {
@@ -12,14 +12,14 @@ export async function getActiveSessionId() {
 }
 
 /**
- * Does the teacher hold an assignment for this class-section (and subject, if given)
- * in the active session?
+ * Does the teacher hold an active (not ended) assignment for this class-section (and subject,
+ * if given) in the active session?
  */
 export async function teacherHasAssignment(teacherId, { classId, sectionId, subjectId }) {
   const sessionId = await getActiveSessionId();
   if (!sessionId || !classId || !sectionId) return false;
 
-  const filter = { teacherId, classId, sectionId, sessionId };
+  const filter = { teacherId, classId, sectionId, sessionId, status: ASSIGNMENT_STATUS.ACTIVE };
   if (subjectId) filter.subjectId = subjectId;
   return Boolean(await TeacherAssignment.exists(filter));
 }

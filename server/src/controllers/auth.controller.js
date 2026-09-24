@@ -1,6 +1,7 @@
 import { env } from '../config/env.js';
 import * as authService from '../services/auth.service.js';
 import { sendCreated, sendSuccess } from '../utils/apiResponse.js';
+import { requestMeta } from '../utils/requestMeta.js';
 
 export const REFRESH_COOKIE = 'ls_rt';
 
@@ -13,14 +14,13 @@ const refreshCookieOptions = {
   path: '/api/auth',
 };
 
-export const requestMeta = (req) => ({
-  ip: req.ip,
-  userAgent: req.get('user-agent')?.slice(0, 300),
-});
-
 function sendSession(res, { user, accessToken, refreshToken, refreshExpiresAt }, message) {
   res.cookie(REFRESH_COOKIE, refreshToken, { ...refreshCookieOptions, expires: refreshExpiresAt });
-  return sendSuccess(res, { message, data: { accessToken, user } });
+  return sendSuccess(res, {
+    message,
+    // mustChangePassword is repeated at the top level so clients can branch without digging.
+    data: { accessToken, user, mustChangePassword: Boolean(user.mustChangePassword) },
+  });
 }
 
 const clearRefreshCookie = (res) => res.clearCookie(REFRESH_COOKIE, refreshCookieOptions);

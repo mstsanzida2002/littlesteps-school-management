@@ -25,12 +25,32 @@ const gradeBandSchema = new mongoose.Schema(
   { _id: false },
 );
 
-function isValidScale(bands) {
+/**
+ * Thresholds, highest first: a band covers [minPercent, previous band's minPercent), the top band
+ * up to 100. Strictly descending minPercent ending at 0 ⇒ 0–100 is covered with no gaps or
+ * overlaps by construction. (validators/settings.validator.js gives detailed messages; this is
+ * the backstop.)
+ */
+export function isValidScale(bands) {
   if (!bands.length) return false;
-  const grades = new Set(bands.map((b) => b.grade));
+  const grades = new Set(bands.map((b) => b.grade.toUpperCase()));
   const descending = bands.every((b, i) => i === 0 || b.minPercent < bands[i - 1].minPercent);
-  return grades.size === bands.length && descending && bands.at(-1).minPercent === 0;
+  const gpaNonIncreasing = bands.every(
+    (b, i) => i === 0 || b.gpa == null || bands[i - 1].gpa == null || b.gpa <= bands[i - 1].gpa,
+  );
+  return (
+    grades.size === bands.length && descending && gpaNonIncreasing && bands.at(-1).minPercent === 0
+  );
 }
+
+/** Add the (exclusive) upper bound of each band for display: A = 70 up to (not incl.) 80. */
+export const withBandRanges = (bands) =>
+  bands.map((band, i) => ({
+    grade: band.grade,
+    minPercent: band.minPercent,
+    maxPercent: i === 0 ? 100 : bands[i - 1].minPercent,
+    ...(band.gpa != null && { gpa: band.gpa }),
+  }));
 
 // Single document (key = 'global'). Always read it through Settings.get().
 const settingsSchema = new mongoose.Schema(

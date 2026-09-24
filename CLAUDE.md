@@ -9,13 +9,17 @@ _brief_ (requirements + the structure a full IEEE-830 SRS should follow), not th
 
 ## Status
 
-Foundation, data layer and authentication are done:
+Foundation, data layer, authentication and the admin module are done:
 
 - The server boots and `/api/health` works; the client shell, routing and data layer are in place.
 - All Mongoose models exist with tests, and a dev seed script is available.
 - **Auth (FR-AUTH-01…06)** is complete on server and client, including the RBAC and ownership
   guards.
-- No feature endpoints yet (admin, teacher, student modules).
+- **Admin module** (FR-ADM-01…06, 10, 11) is done on the server: users, registrations, academic
+  structure, teacher assignments, settings and the audit log. The admin UI is not built yet.
+- **Deferred:** FR-ADM-07 (meetings), 08 (notices) and 09 (attendance/result overrides) are built
+  with their features, so admin and teacher share one service each.
+- Not yet built: teacher and student modules; the admin UI.
 
 ## Stack
 
@@ -90,6 +94,7 @@ Env: copy `server/.env.example` → `server/.env`, `client/.env.example` → `cl
     4 class teachers (40 assignments, Sun–Thu timetable: section A 08:00, section B 10:45), 40
     students with guardians, and whole-day attendance for the last 30 calendar days on school
     days only. Today is left unmarked, and 4 students are deliberately below 75%.
+  - Seeded accounts have `mustChangePassword: false`.
   - Dev logins: `admin` / `Admin@1234`, teachers `<first>.<last>` / `Teacher@1234`, students
     `<class>-<section>-<roll>` (e.g. `kg1-a-03`) / `Student@1234`. The script prints them all.
 - The free M0 tier throttles bursts: keep bulk maintenance operations sequential, not
@@ -135,8 +140,14 @@ client/src/
   - Wrap every async controller in `asyncHandler` (Express 4 does not catch async errors).
 - **Responses** — always via `utils/apiResponse.js`:
   - success `{ success: true, message, data, meta? }` (`meta` = pagination from `paginationMeta`)
-  - error `{ success: false, message, errors?: [{ field, message, location? }], stack? }`
-    (stack only in dev for 5xx). Produced solely by `middleware/errorHandler.js`.
+  - error `{ success: false, message, code?, errors?: [{ field, message, location? }], details?,
+stack? }`. Produced solely by `middleware/errorHandler.js`; stack only in dev for 5xx.
+  - `code` is a machine-readable `ERROR_CODES` value (`config/constants.js`). Clients branch on
+    `code`, never on `message`. `details` carries structured context (clash list, reference
+    counts, next free roll…).
+  - Raise them with `new ApiError(status, message, errors, { code, details })`, the shortcut
+    methods (`ApiError.conflict(msg, errors, { code, details })`), or
+    `ApiError.invalidField(field, msg)` for a single-field 422.
 - **Errors:** `throw ApiError.notFound('Student not found')` etc. Mongoose Cast/Validation,
   duplicate key 11000 and Zod errors are translated centrally — don't catch them to reformat.
   JWT errors become 401s inside `verifyAccessToken`.
@@ -147,7 +158,30 @@ client/src/
 - **Naming:** files `camelCase.js` with suffixes — `user.model.js`, `user.service.js`,
   `user.controller.js`, `user.routes.js`, `user.validator.js`. Models `PascalCase` singular.
   Routes plural, kebab-case (`/api/teacher-assignments`).
-- **Lists** are paginated (`?page=&limit=`) and must hit indexed fields.
+- **Lists** (`utils/listQuery.js`):
+  - The query schema comes from `listQuerySchema({ sortable, defaultSort, filters })`:
+    `page` (≥1), `limit` (1–100, default 20), `search` (special characters escaped,
+    case-insensitive), `sort` (`field` / `-field`, only from an allowed list).
+  - Run the query with `paginate(Model, filter, { page, limit, sort, select, populate })` →
+    `{ items, meta: { page, limit, total, totalPages } }`. Respond
+    `sendSuccess(res, { data: items, meta })`.
+  - Filters must hit indexed fields.
+- **Audit** (`services/audit.service.js`): every admin create/update/delete/status change calls
+  `recordAudit({ actorId, action, entityType, entityId, before?, after?, meta }, { session? })`.
+  - Use `diffChanges(before, after)` so only changed fields are stored.
+  - Secrets (`password*`, `tokenVersion`) are always stripped.
+  - Actions are dotted verbs: `user.create`, `user.suspend`, `assignment.end`,
+    `settings.update`, …
+  - `meta` = `requestMeta(req)` (`utils/requestMeta.js`).
+- **Transactions:** `withTransaction(async (session) => …)` (`utils/transaction.js`). Pass
+  `{ session }` to every read and write inside; for `Model.create` use the array form,
+  `Model.create([doc], { session })`.
+  - Use them wherever several documents must change together (user + profile, approval,
+    delete cascade, session switch).
+- **Deletes** are refused while anything references the entity:
+  `assertNotReferenced(kind, id, label)` → 409 `IN_USE` with counts. Users with history →
+  409 `USER_HAS_HISTORY` (suspend instead). Extend `services/reference.service.js` when new
+  collections reference existing entities.
 - **Models** (`src/models/<name>.model.js`, exported from `src/models/index.js`):
   - Build fields from `models/helpers/schemaTypes.js`: `ref()`, `schoolDate()` (every
     calendar-date field), `phone()` (Bangladeshi mobile), `optionalEmail()`, `baseSchemaOptions`.
@@ -220,6 +254,11 @@ client/src/
    - `User.registration` (guardian, DOB, gender, requested class, note) for self-registered
      Pending students. A StudentProfile needs roll number, section and session, so the admin
      creates it on approval (FR-ADM-02/05) and clears `registration`.
+9. **Admin additions:**
+   - Account status **`rejected`**, with `registration.review { reason, reviewedBy, reviewedAt }`.
+   - `User.mustChangePassword`.
+   - `TeacherAssignment.status` (`active | ended`), plus `endedAt` and `endedBy`.
+   - Roles are fixed after creation (no promote/demote).
 
 ## Attendance feature rules (for implementation)
 
@@ -238,6 +277,92 @@ client/src/
   `weekdayOf()` from `utils/date.js`.
 - Attendance % = (present + late) ÷ recorded classes × 100 when `lateCountsAsPresent` is true;
   otherwise present ÷ recorded × 100.
+- The timetable is guaranteed consistent by the admin module: no teacher clashes and no
+  class-section clashes. So "subjects scheduled for this class-section on this weekday" is
+  unambiguous.
+
+## Results feature rules (for implementation)
+
+- **Grades are stored on each Result at the time they are calculated and are never recomputed**
+  from the current grading scale. Changing `Settings.gradingScale` affects only future
+  calculations; existing results, published or draft, keep their stored `grade`.
+- Apply the scale as thresholds: the grade is the first band (highest first) whose `minPercent`
+  ≤ percentage. A manual override sets `gradeOverridden: true` (FR-TCH-10).
+- Admin overrides of attendance and results (FR-ADM-09) go through the same services as the
+  teacher edits, with the same logging.
+
+## Admin module (FR-ADM-01…06, 10, 11)
+
+All routes use `authenticate` + `authorize('admin')` and live in `routes/user.routes.js` and
+`routes/admin.routes.js` (`crudRouter` helper).
+
+| Resource                    | Endpoints                                                                    |
+| --------------------------- | ---------------------------------------------------------------------------- |
+| `/api/users`                | list (filters role/status/class/section/session, search), get, create, edit  |
+|                             | `GET /next-roll`, `PATCH /:id/{suspend,reactivate,approve,reject,password}`  |
+|                             | `DELETE /:id` (no history only)                                              |
+| `/api/classes`, `/sections` | CRUD, with counts; blocked deletes → 409 `IN_USE`                            |
+| `/api/subjects`             | CRUD                                                                         |
+| `/api/sessions`             | CRUD + `POST /:id/activate` (`{ confirm: true }` required when switching)    |
+| `/api/teacher-assignments`  | list (active session by default), create, `PATCH` schedule, delete/end       |
+| `/api/settings`             | `GET`, `PATCH` (partial)                                                     |
+| `/api/audit-logs`           | list with filters `action`, `actorId`, `entityType`, `entityId`, `from`/`to` |
+
+**Users**
+
+- Admin-created accounts are **active** with **`mustChangePassword: true`**. So is an admin
+  password reset.
+- Students get their StudentProfile in the **active session**, in one transaction with the user.
+  Teachers get a TeacherProfile.
+- **Roll numbers:** `next-roll` suggests highest + 1; the admin may pick any free number. The
+  unique index is the final guard: 409 `ROLL_NUMBER_TAKEN`, _"Roll 6 is already taken in
+  Playgroup-B (2026). Next free: 7."_
+- Roles cannot be changed (400).
+- **Self-protection:** an admin cannot suspend or delete themselves (403). The last active admin
+  cannot be suspended or deleted (409 `LAST_ADMIN`, re-checked after the write to catch races).
+- **Suspension** calls `invalidateUserSessions`. Reactivation is suspended → active only.
+- **Hard delete** only without history (`countUserHistory`): attendance, results, assignments,
+  assessments, meetings, notices, edit logs. AuditLog entries don't count. The delete cascade
+  removes the profile, refresh tokens and notifications.
+
+**Registrations**
+
+- **Approve** (`{ classId, sectionId, rollNo?, dateOfBirth?, admissionDate? }`), in ONE
+  transaction: StudentProfile from `registration`, then status active, then `registration`
+  removed, then audit. Any failure rolls everything back.
+- A date of birth is required, from the registration or the request.
+- **Reject** `{ reason }` → status `rejected`; login says the registration was not approved.
+
+**Academic structure**
+
+- Sections can't move between classes, and capacity can't go below current enrolment.
+- The active session can't be deleted. New sessions start inactive.
+- **Switching sessions** without `confirm: true` returns 409
+  `SESSION_SWITCH_CONFIRMATION_REQUIRED` with enrolment and assignment counts. With confirm, one
+  transaction deactivates the old session, then activates the new one.
+
+**Teacher assignments** (`services/teacherAssignment.service.js`)
+
+- Always in the active session. The user must be an **active teacher**, and the section must
+  belong to the class.
+- **Clash detection** (409 `SCHEDULE_CLASH`, `details.clashes`) runs against other _active_
+  assignments in the session. Slots are half-open `[start, end)`, so back-to-back slots are fine.
+  1. **teacher:** the same teacher at overlapping times;
+  2. **class-section:** the same class-section at overlapping times, even with different teachers.
+- Slots inside one schedule must not overlap (422).
+- **Removing** an assignment with attendance or assessments ends it (`status: 'ended'`); it
+  stays for history but grants no access. Otherwise it is deleted. Re-assigning an ended
+  combination reactivates it.
+- Only **active** assignments grant access (`access.service`).
+
+**Settings**
+
+- The grading scale is thresholds `[{ grade, minPercent, gpa? }]`. It is accepted in any order
+  and stored highest-first.
+- Validation: unique grades and thresholds, the lowest band at 0, values 0–100, and GPA never
+  increasing as the grade falls. Together these mean 0–100 is covered with no gaps or overlaps.
+- Responses add a display `maxPercent`.
+- `weeklyOffDays` must be unique, with at least one school day.
 
 ## Auth (FR-AUTH-01…06)
 
@@ -291,6 +416,13 @@ client/src/
 
 **Other rules**
 
+- **Forced password change:** while `mustChangePassword` is true, login and refresh succeed and
+  return `mustChangePassword: true`.
+  - Every protected route returns 403 `PASSWORD_CHANGE_REQUIRED` (in `authenticate`), except
+    `/auth/me` and `/auth/password` (which use `authenticateAllowingPasswordChange`), plus
+    `/auth/refresh` and `/auth/logout`.
+  - The client's `ProtectedRoute` sends such users to `/change-password`. Changing the password
+    clears the flag.
 - Passwords: 8+ characters, a letter and a number (any script, so Bangla works), and **at most
   72 UTF-8 bytes** (bcrypt truncates; a Bangla letter is 3 bytes). Validate new passwords with
   `passwordPolicy` from `validators/auth.validator.js`.
@@ -361,6 +493,11 @@ client/src/
 - Create a fresh `createApp()` per test when rate limits matter; limiters are per app.
   `createApp({ testRouter })` mounts test-only routes at `/api/test`, and
   `createApp({ selfRegistrationEnabled })` overrides the env flag.
+- Admin tests: `tests/helpers/school.js` → `createSchool()` (active 2026 session, Playgroup A/B,
+  Nursery A, 3 subjects, an admin and a teacher) and `apiAs(user)` (an authenticated Supertest
+  client for `/api`).
+- To prove a transaction matters, make a step **after** the first write fail. See the approval
+  atomicity test in `admin.registration.test.js`.
 - Tests never read `server/.env`; `vitest.config.js` sets `JWT_ACCESS_SECRET` and
   `BCRYPT_ROUNDS=4`.
 

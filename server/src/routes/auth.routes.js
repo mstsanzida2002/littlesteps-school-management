@@ -2,7 +2,7 @@ import { Router } from 'express';
 
 import { env } from '../config/env.js';
 import * as auth from '../controllers/auth.controller.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticateAllowingPasswordChange } from '../middleware/auth.js';
 import { createAuthLimiters } from '../middleware/rateLimiter.js';
 import { validate } from '../middleware/validate.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -22,10 +22,11 @@ export function createAuthRouter({ selfRegistrationEnabled = env.SELF_REGISTRATI
   router.post('/refresh', limit.refresh, asyncHandler(auth.refresh));
   // No authenticate: logout must work even after the access token has expired.
   router.post('/logout', asyncHandler(auth.logout));
-  router.get('/me', authenticate, asyncHandler(auth.me));
+  // /me and /password stay reachable while mustChangePassword is set.
+  router.get('/me', authenticateAllowingPasswordChange, asyncHandler(auth.me));
   router.patch(
     '/password',
-    authenticate,
+    authenticateAllowingPasswordChange,
     validate({ body: changePasswordSchema }),
     asyncHandler(auth.changePassword),
   );

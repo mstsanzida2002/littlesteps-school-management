@@ -121,6 +121,16 @@ export async function login(credentials) {
   return session.user;
 }
 
+/**
+ * Change the password. The server ends every other session and returns a fresh one for this
+ * device (with mustChangePassword cleared), so the user stays signed in here.
+ */
+export async function changePassword(body) {
+  const session = await authApi.changePassword(body);
+  startSession(session);
+  return session.user;
+}
+
 /** Explicit user logout: revoke on the server, clear this tab, tell the other tabs. */
 export async function logout() {
   try {

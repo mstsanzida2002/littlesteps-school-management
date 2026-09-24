@@ -16,6 +16,18 @@ const registrationSchema = new mongoose.Schema(
     requestedClassId: ref('Class', { required: false }),
     note: { type: String, trim: true, maxlength: 500 },
     submittedAt: { type: Date, default: Date.now },
+    // Set when an admin rejects the registration (approval removes `registration` entirely).
+    review: {
+      type: new mongoose.Schema(
+        {
+          reason: { type: String, trim: true, maxlength: 500 },
+          reviewedBy: ref('User'),
+          reviewedAt: { type: Date, default: Date.now },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
   },
   { _id: false },
 );
@@ -48,6 +60,10 @@ const userSchema = new mongoose.Schema(
     // Incremented to invalidate every session at once (password change/reset, suspension).
     // Access tokens carry it as `tv`; authenticate rejects a mismatch.
     tokenVersion: { type: Number, default: 0, min: 0 },
+    // True after an admin creates the account or resets its password: the user may sign in but
+    // every API route except /auth/me, /auth/password, /auth/refresh, /auth/logout returns 403
+    // PASSWORD_CHANGE_REQUIRED until they choose their own password.
+    mustChangePassword: { type: Boolean, default: false },
     registration: { type: registrationSchema, default: undefined },
   },
   {

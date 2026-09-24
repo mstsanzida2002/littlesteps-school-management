@@ -64,7 +64,9 @@ export function errorHandler(err, req, res, next) {
     // Never leak internal messages for unexpected errors in production.
     message: apiError.isOperational || !env.isProd ? apiError.message : 'Internal server error',
   };
+  if (apiError.code) body.code = apiError.code;
   if (apiError.errors) body.errors = apiError.errors;
+  if (apiError.details) body.details = apiError.details;
   if (!env.isProd && apiError.statusCode >= 500 && original?.stack) body.stack = original.stack;
 
   res.status(apiError.statusCode).json(body);

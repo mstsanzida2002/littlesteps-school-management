@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-import { WEEKDAYS } from '../config/constants.js';
+import { ASSIGNMENT_STATUS, WEEKDAYS } from '../config/constants.js';
 import { baseSchemaOptions, ref, TIME_HHMM_RE } from './helpers/schemaTypes.js';
 
 const scheduleSlotSchema = new mongoose.Schema(
@@ -32,6 +32,15 @@ const teacherAssignmentSchema = new mongoose.Schema(
     sessionId: ref('AcademicSession'),
     // Weekly timetable for this class-section-subject (FR-TCH-01, "today's classes").
     schedule: { type: [scheduleSlotSchema], default: [] },
+    // Removing an assignment that already has attendance/assessments ends it instead of deleting
+    // it. Only active assignments grant access (services/access.service.js).
+    status: {
+      type: String,
+      enum: Object.values(ASSIGNMENT_STATUS),
+      default: ASSIGNMENT_STATUS.ACTIVE,
+    },
+    endedAt: Date,
+    endedBy: ref('User', { required: false }),
   },
   baseSchemaOptions,
 );
@@ -41,5 +50,6 @@ teacherAssignmentSchema.index(
   { unique: true },
 );
 teacherAssignmentSchema.index({ sessionId: 1, classId: 1, sectionId: 1 });
+teacherAssignmentSchema.index({ sessionId: 1, teacherId: 1, status: 1 });
 
 export const TeacherAssignment = mongoose.model('TeacherAssignment', teacherAssignmentSchema);

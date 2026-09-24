@@ -11,6 +11,7 @@ export const ROLES = Object.freeze({
 export const ROUTES = Object.freeze({
   HOME: '/',
   LOGIN: '/login',
+  CHANGE_PASSWORD: '/change-password',
   ADMIN: '/admin',
   TEACHER: '/teacher',
   STUDENT: '/student',
