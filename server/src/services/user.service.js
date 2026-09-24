@@ -22,6 +22,8 @@ import {
   requireSectionInClass,
   rethrowRollConflict,
 } from './lookup.service.js';
+import { syncStudentMeetingInvites } from './meeting.service.js';
+import { createOutbox, dispatchOutbox } from './notification.service.js';
 import { countUserHistory, describeCounts } from './reference.service.js';
 import { invalidateUserSessions } from './token.service.js';
 
@@ -167,7 +169,8 @@ export async function createUser(actor, data, meta) {
 
   const passwordHash = await hashPassword(password);
   try {
-    const userId = await withTransaction(async (session) => {
+    const { userId, outbox } = await withTransaction(async (session) => {
+      const txOutbox = createOutbox();
       const [user] = await User.create(
         [
           {
@@ -197,6 +200,15 @@ export async function createUser(actor, data, meta) {
           ],
           { session },
         );
+        // Late enrolment: join upcoming meetings targeting everyone / this class / this section.
+        await syncStudentMeetingInvites({
+          studentId: user._id,
+          sessionId: placement.sessionId,
+          from: null,
+          to: placement,
+          session,
+          outbox: txOutbox,
+        });
       } else if (role === ROLES.TEACHER) {
         [profileDoc] = await TeacherProfile.create(
           [{ userId: user._id, ...pick(profile, TEACHER_PROFILE_KEYS) }],
@@ -215,8 +227,9 @@ export async function createUser(actor, data, meta) {
         },
         { session },
       );
-      return user._id;
+      return { userId: user._id, outbox: txOutbox };
     });
+    await dispatchOutbox(outbox);
     return getUser(userId);
   } catch (err) {
     if (placement) await rethrowRollConflict(err, placement);
@@ -253,8 +266,10 @@ export async function updateUser(actor, id, data, meta) {
     }
   }
 
+  let outbox;
   try {
-    await withTransaction(async (session) => {
+    outbox = await withTransaction(async (session) => {
+      const txOutbox = createOutbox();
       const user = await requireUser(id, { session });
       const before = userSummary(user);
       for (const [key, value] of Object.entries(fields)) {
@@ -286,8 +301,20 @@ export async function updateUser(actor, id, data, meta) {
           ).suggestedRollNo;
         }
         placement = { classId, sectionId, sessionId: profile.sessionId, rollNo };
+        const from = { classId: profile.classId, sectionId: profile.sectionId };
         profile.set({ ...pick(profileInput, STUDENT_PROFILE_KEYS), classId, sectionId, rollNo });
         await profile.save({ session });
+        if (moving) {
+          // Transfer: leave meetings invited via the old section/class, join the new ones.
+          await syncStudentMeetingInvites({
+            studentId: user._id,
+            sessionId: profile.sessionId,
+            from,
+            to: { classId, sectionId },
+            session,
+            outbox: txOutbox,
+          });
+        }
         profileChanges = diffChanges(beforeProfile, profile.toObject());
       } else if (profileInput && existing.role === ROLES.TEACHER) {
         const profile = await TeacherProfile.findOne({ userId: id }).session(session);
@@ -317,11 +344,13 @@ export async function updateUser(actor, id, data, meta) {
         },
         { session },
       );
+      return txOutbox;
     });
   } catch (err) {
     if (placement) await rethrowRollConflict(err, placement);
     throw err;
   }
+  await dispatchOutbox(outbox);
   return getUser(id);
 }
 

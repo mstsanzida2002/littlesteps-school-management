@@ -5,7 +5,9 @@ import {
   atSchoolTime,
   daysBetween,
   formatSchoolDateLong,
+  formatSchoolDateTime,
   isValidDateKey,
+  schoolTimeOf,
   monthRange,
   schoolDateKeyOf,
   toDateKey,
@@ -54,6 +56,10 @@ describe('date utility (Asia/Dhaka, stored as UTC midnight)', () => {
     expect(daysBetween(toSchoolDate('2026-09-17'), thu)).toBe(7);
     expect(daysBetween(thu, toSchoolDate('2026-09-17'))).toBe(-7);
     expect(formatSchoolDateLong(thu)).toBe('Thu, 24 Sep 2026');
+    // 04:00 UTC = 10:00 in Dhaka; 20:30 UTC on the 30th = 02:30 on 1 Oct in Dhaka.
+    expect(formatSchoolDateTime(new Date('2026-10-01T04:00:00Z'))).toBe('Thu, 1 Oct 2026, 10:00');
+    expect(formatSchoolDateTime(new Date('2026-09-30T20:30:00Z'))).toBe('Thu, 1 Oct 2026, 02:30');
+    expect(schoolTimeOf(new Date('2026-10-01T04:05:00Z'))).toBe('10:05');
   });
 
   it('returns the weekday of a school date', () => {

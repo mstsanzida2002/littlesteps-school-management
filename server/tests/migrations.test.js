@@ -62,25 +62,34 @@ describe('migration runner', () => {
     }
   });
 
-  it('waits for / refuses a held lock and takes over a stale one', async () => {
+  it('waits for / refuses a held lock and takes over one without a heartbeat', async () => {
     const dir = await tempMigrations({
       '001-noop.js': `export default { description: 'noop', async up() {} };`,
     });
     try {
-      await db()
-        .collection('migration_lock')
-        .insertOne({ _id: 'lock', owner: 'other', acquiredAt: new Date() });
+      await db().collection('migration_lock').insertOne({
+        _id: 'lock',
+        owner: 'other',
+        acquiredAt: new Date(),
+        heartbeatAt: new Date(),
+      });
       await expect(runMigrations({ dir, logger: silent, waitForLockMs: 50 })).rejects.toThrow(
         /lock/,
       );
 
       await db()
         .collection('migration_lock')
-        .updateOne(
-          { _id: 'lock' },
-          { $set: { acquiredAt: new Date(Date.now() - 11 * 60 * 1000) } },
-        );
+        .updateOne({ _id: 'lock' }, { $set: { heartbeatAt: new Date(Date.now() - 31_000) } });
       expect(await runMigrations({ dir, logger: silent, waitForLockMs: 50 })).toEqual(['001-noop']);
+
+      // Nothing pending → no lock needed at all, even if someone holds it.
+      await db().collection('migration_lock').insertOne({
+        _id: 'lock',
+        owner: 'other',
+        acquiredAt: new Date(),
+        heartbeatAt: new Date(),
+      });
+      expect(await runMigrations({ dir, logger: silent, waitForLockMs: 50 })).toEqual([]);
     } finally {
       await rm(dir, { recursive: true });
     }
@@ -94,9 +103,23 @@ describe('real migrations', () => {
       .insertOne({ teacherId: new mongoose.Types.ObjectId() });
     await db().collection('studentprofiles').insertOne({ rollNo: 1 });
     await db().collection('settings').insertOne({ key: 'global', attendanceThreshold: 75 });
+    await db().collection('assessments').insertOne({ name: 'Old test' });
+    await db().collection('results').insertOne({ marksObtained: 5 });
+    const createdAt = new Date('2026-01-10T00:00:00Z');
+    await db().collection('notices').insertOne({ title: 'Old notice', createdAt });
 
     const applied = await runMigrations({ logger: silent });
-    expect(applied).toEqual(['001-teacher-assignment-status', '002-attendance-notifications']);
+    expect(applied).toEqual([
+      '001-teacher-assignment-status',
+      '002-attendance-notifications',
+      '003-results-meetings-notices',
+    ]);
+    expect((await db().collection('assessments').findOne()).mode).toBe('marks');
+    expect((await db().collection('results').findOne()).attendance).toBe('present');
+    expect(await db().collection('notices').findOne()).toMatchObject({
+      status: 'published',
+      publishedAt: createdAt,
+    });
 
     expect((await db().collection('teacherassignments').findOne()).status).toBe('active');
     expect((await db().collection('studentprofiles').findOne()).attendanceAlert).toEqual({

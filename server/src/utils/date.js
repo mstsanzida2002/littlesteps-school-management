@@ -138,6 +138,22 @@ export function formatSchoolDateLong(schoolDate) {
   return `${p.weekday}, ${p.day} ${p.month} ${p.year}`;
 }
 
+/** Wall-clock time ('HH:mm') of an instant in Asia/Dhaka. */
+export function schoolTimeOf(instant) {
+  const parts = Object.fromEntries(
+    schoolDateTimeFormatter.formatToParts(instant).map(({ type, value }) => [type, value]),
+  );
+  return `${parts.hour}:${parts.minute}`;
+}
+
+/** A real instant shown in Dhaka time for messages, e.g. "Thu, 1 Oct 2026, 10:00". */
+export function formatSchoolDateTime(instant) {
+  const parts = Object.fromEntries(
+    schoolDateTimeFormatter.formatToParts(instant).map(({ type, value }) => [type, value]),
+  );
+  return `${formatSchoolDateLong(toSchoolDate(instant))}, ${parts.hour}:${parts.minute}`;
+}
+
 /** Weekday name ('sunday'…'saturday') of a stored school date. */
 export function weekdayOf(schoolDate) {
   assertNormalized(schoolDate);

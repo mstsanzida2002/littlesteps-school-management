@@ -13,6 +13,8 @@ import {
   requireSectionInClass,
   rethrowRollConflict,
 } from './lookup.service.js';
+import { syncStudentMeetingInvites } from './meeting.service.js';
+import { createOutbox, dispatchOutbox } from './notification.service.js';
 import { getUser } from './user.service.js';
 
 async function requirePendingRegistration(id, { session } = {}) {
@@ -51,8 +53,10 @@ export async function approveRegistration(actor, id, input, meta = {}) {
     rollNo: input.rollNo ?? (await nextRollNumber(base)).suggestedRollNo,
   };
 
+  let outbox;
   try {
-    await withTransaction(async (session) => {
+    outbox = await withTransaction(async (session) => {
+      const txOutbox = createOutbox();
       const user = await requirePendingRegistration(id, { session });
       const reg = user.registration.toObject();
 
@@ -74,6 +78,16 @@ export async function approveRegistration(actor, id, input, meta = {}) {
       user.registration = undefined;
       await user.save({ session });
 
+      // Join upcoming meetings targeting everyone / this class / this section.
+      await syncStudentMeetingInvites({
+        studentId: user._id,
+        sessionId: placement.sessionId,
+        from: null,
+        to: placement,
+        session,
+        outbox: txOutbox,
+      });
+
       await recordAudit(
         {
           actorId: actor.id,
@@ -89,10 +103,12 @@ export async function approveRegistration(actor, id, input, meta = {}) {
         },
         { session },
       );
+      return txOutbox;
     });
   } catch (err) {
     await rethrowRollConflict(err, placement);
   }
+  await dispatchOutbox(outbox);
   return getUser(id);
 }
 

@@ -39,6 +39,11 @@ export const ERROR_CODES = Object.freeze({
   BACKDATE_LIMIT: 'BACKDATE_LIMIT',
   NO_SCHEDULED_SUBJECTS: 'NO_SCHEDULED_SUBJECTS',
   ALREADY_MARKED: 'ALREADY_MARKED',
+  // Results / meetings / notices
+  ASSESSMENT_PUBLISHED: 'ASSESSMENT_PUBLISHED',
+  RESULTS_INCOMPLETE: 'RESULTS_INCOMPLETE',
+  MEETING_STARTED: 'MEETING_STARTED',
+  MEETING_CANCELLED: 'MEETING_CANCELLED',
 });
 
 // Single-school deployment. All calendar-date logic goes through utils/date.js.

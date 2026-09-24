@@ -9,7 +9,7 @@ _brief_ (requirements + the structure a full IEEE-830 SRS should follow), not th
 
 ## Status
 
-Foundation, data layer, authentication, the admin module and attendance + notifications are done:
+The whole server side of the SRS is done; the UIs are next:
 
 - The server boots and `/api/health` works; the client shell, routing and data layer are in place.
 - All Mongoose models exist with tests, and a dev seed script is available.
@@ -20,10 +20,11 @@ Foundation, data layer, authentication, the admin module and attendance + notifi
 - **Attendance** (FR-TCH-03…07, SRS 3.6), the attendance override (FR-ADM-09) and
   **notifications** (FR-NOT-01…05: in-app, Socket.io, optional email) are done on the server.
   The client has the notification bell with a live unread count.
-- **Deferred:** FR-ADM-07 (meetings), 08 (notices) and 09 (result overrides) are built with their
-  features.
-- Not yet built: results, meetings, notices, dashboards, the teacher and student UIs, the
-  notification list page (comes with the student module), and the admin UI.
+- **Results** (FR-TCH-08…12, FR-STU-05, result override FR-ADM-09), **meetings** (FR-ADM-07,
+  FR-TCH-13/14, FR-STU-06/07), **notices** (FR-ADM-08, FR-STU-08) and the three **dashboards**
+  (SRS §4) are done on the server.
+- Not yet built: the teacher, student and admin UIs (dashboards with charts, attendance taking,
+  result entry, meetings, notices) and the notification list page.
 
 ## Stack
 
@@ -99,6 +100,17 @@ Env: copy `server/.env.example` → `server/.env`, `client/.env.example` → `cl
     4 class teachers (40 assignments, Sun–Thu timetable: section A 08:00, section B 10:45), 40
     students with guardians, and whole-day attendance for the last 30 calendar days on school
     days only. Today is left unmarked, and 4 students are deliberately below 75%.
+  - Also creates demo content (`seed/demoContent.js`) for every class-section:
+    - a **published** English class test (marks, a few absent) and a published Drawing
+      portfolio (remarks);
+    - a **draft** Math class test, half entered;
+    - meetings: an all-school PTM with RSVPs, a Playgroup-A online chat, and a cancelled KG-2
+      orientation;
+    - notices: one pinned, one for teachers, one expired;
+    - the matching notifications.
+  - **`--large`**: about 500 students (8 × 63) with the same 30 days of attendance (~55k records)
+    and more meetings and notices, for performance testing. Seed it into a separate
+    `*_perf_dev` database (override `MONGODB_URI`) so `littlesteps_dev` keeps its demo data.
   - Seeded accounts have `mustChangePassword: false`.
   - Dev logins: `admin` / `Admin@1234`, teachers `<first>.<last>` / `Teacher@1234`, students
     `<class>-<section>-<roll>` (e.g. `kg1-a-03`) / `Student@1234`. The script prints them all.
@@ -116,8 +128,11 @@ Env: copy `server/.env.example` → `server/.env`, `client/.env.example` → `cl
     models change.
 - **Runner** (`src/migrations/runner.js`): applies pending files in name order and records each in
   the `migrations` collection.
+  - The lock is taken **only when something is pending**, so ordinary restarts and multiple
+    instances never wait on each other.
   - A lock document in `migration_lock` serializes runners (several instances, or startup racing
-    a manual run). A lock older than 10 min is treated as stale and taken over.
+    a manual run). The holder refreshes `heartbeatAt` every 5 s; a lock with no heartbeat for
+    30 s (a crashed or killed runner, e.g. a dev `--watch` restart mid-migration) is taken over.
   - If a migration fails, it isn't recorded and the lock is released.
 - **Two ways to run them (both are safe together, because of the lock):**
   1. **Automatically at server start-up**, before listening (`server.js`). If a migration fails,
@@ -129,7 +144,8 @@ Env: copy `server/.env.example` → `server/.env`, `client/.env.example` → `cl
      optional.
 - `seed --reset` records every migration as applied (baseline), since freshly seeded data already
   has the current schema.
-- Applied so far: `001-teacher-assignment-status`, `002-attendance-notifications`.
+- Applied so far: `001-teacher-assignment-status`, `002-attendance-notifications`,
+  `003-results-meetings-notices`.
 
 ## Database outages
 
@@ -306,6 +322,13 @@ stack? }`. Produced solely by `middleware/errorHandler.js`; stack only in dev fo
     - `Settings.attendanceBackdateDays` (default 7).
     - `Notification.data` (structured payload) and `Notification.dedupeKey` (partial unique
       index; `absence:<studentId>:<YYYY-MM-DD>`).
+11. **Results, meetings and notices additions** (migration 003):
+    - `Assessment.mode` (`marks | grade | remarks`), `totalMarks` only for marks, and a
+      `gradingScale` snapshot plus `publishedBy`.
+    - `Result.attendance` (`present | absent | excused`) and `Result.percent`.
+    - `Meeting.invite.teacherIds`, target `none` (staff-only), and
+      `cancelledAt` / `cancelledBy` / `cancelReason`.
+    - `Notice.status` (`draft | published`) and `createdBy`.
 
 ## Attendance feature rules
 
@@ -400,15 +423,112 @@ stack? }`. Produced solely by `middleware/errorHandler.js`; stack only in dev fo
 - Months come from `$dateToString '%Y-%m'` in UTC, which is correct because dates are stored as
   UTC midnight of the Dhaka date.
 
-## Results feature rules (for implementation)
+## Results (FR-TCH-08…12, FR-STU-05, FR-ADM-09) — `services/results.service.js`
 
-- **Grades are stored on each Result at the time they are calculated and are never recomputed**
-  from the current grading scale. Changing `Settings.gradingScale` affects only future
-  calculations; existing results, published or draft, keep their stored `grade`.
-- Apply the scale as thresholds: the grade is the first band (highest first) whose `minPercent`
-  ≤ percentage. A manual override sets `gradeOverridden: true` (FR-TCH-10).
-- Admin overrides of attendance and results (FR-ADM-09) go through the same services as the
-  teacher edits, with the same logging.
+**Grading rule (snapshot at publish)**
+
+- A grade is stored on each Result when calculated; published grades are **never recomputed
+  from the current Settings scale**.
+- **Draft** grades are provisional: they're calculated with the current scale when an entry is
+  saved.
+- **Publishing snapshots** `Settings.gradingScale` onto `Assessment.gradingScale` and regrades
+  every non-overridden marks entry with it, so the whole assessment is consistent.
+- After publishing, edits (teacher or admin) grade with the **assessment's own snapshot**.
+  Changing the settings affects only assessments published afterwards.
+- A scale is thresholds: the grade is the first band (highest first) whose `minPercent` ≤
+  percent (`services/grading.js`). A manual grade in marks mode sets `gradeOverridden`; new
+  marks without a grade recalculate it and clear the override.
+
+**Rules**
+
+- **Who:** teachers manage assessments for class-section-subjects in their active assignments,
+  so any teacher of that subject can help. Admins manage any.
+- **Modes:**
+  - `marks`: `totalMarks`; marks from 0 to total, 2 decimals.
+  - `grade`: a grade from the scale.
+  - `remarks`: feedback only.
+  - Remarks are optional in every mode, but required for present students in remarks mode.
+- **Absent / excused** entries have no marks or grade (422 otherwise). The UI shows "Absent",
+  never 0.
+- Results can be entered and published only from the assessment date.
+- **Drafts:** `PUT /api/results/:assessmentId` bulk-upserts entries, which stay freely editable.
+  Draft assessments can be edited (changing `totalMarks` regrades) or deleted.
+- **Publish** (`PATCH /api/assessments/:id/publish`):
+  - Needs a complete entry for every student enrolled in that class-section and admitted by the
+    assessment date; otherwise 422 `RESULTS_INCOMPLETE`, listing each student and what's
+    missing.
+  - One transaction covers: the snapshot, the regrade, published status, and **one
+    `result_published` notification per student**.
+  - No unpublishing in v1.
+- **Published edits** (`PATCH /api/results/:id`): teachers (own subjects) or admins
+  (`result.override`). Reason required; before/after audited; `result_updated` sent to that
+  student.
+- **Students only see published results:** `studentResults` joins each Result to its Assessment
+  and matches `status: 'published'` for every caller.
+
+## Meetings (FR-ADM-07, FR-TCH-13/14, FR-STU-06/07) — `services/meeting.service.js`
+
+- **Date and time:** entered as Dhaka local `{ date, time }` and stored as an instant
+  (`atSchoolTime`). Must be in the future. Venue or an `https://` link required.
+- **Invites:** the target (`students | sections | classes | all | none`) is stored **and
+  resolved** to `inviteeStudentIds` (active-session enrolment). Admins may add `teacherIds`.
+  - **Teacher scope:** their own class-sections only. A whole class only if they teach every
+    section of it. Never `all` or teachers.
+- **Enrolment changes** (`syncStudentMeetingInvites`) run inside the transaction of the
+  enrolment change: creating a student, approving a registration, or moving a student.
+  - **Joining:** added to upcoming, non-cancelled meetings whose target covers them (`all`, their
+    class, their section), with a `meeting_invite`.
+  - **Leaving:** removed only from meetings they got via their old section or class, and only if
+    the new placement isn't still covered. Their response is removed and they get "no longer
+    invited".
+  - Individual invites (target `students`) and past or cancelled meetings never change.
+- **Updates** (organiser or admin, before the start):
+  - A detail change sends `meeting_updated` to everyone who stays invited.
+  - An invite change re-resolves the list: new invitees get `meeting_invite`, and removed ones
+    get "no longer invited" (`meeting_updated` with `data.removed`).
+- **Cancel** (`{ reason }`): `meeting_cancelled` to everyone; later updates and RSVPs return 409.
+- **RSVP:** invited students only, until the start; they can change it (atomic upsert of their
+  single response). Errors: 409 `MEETING_STARTED` / `MEETING_CANCELLED`.
+- **Responses:** `GET /:id/responses` (organiser or admin) returns counts plus a per-student
+  list.
+- **Visibility:** admins see all; teachers see meetings they organise or are invited to; students
+  see their invitations only (without the invitee list). Anything else is 404.
+
+## Notices (FR-ADM-08, FR-STU-08) — `services/notice.service.js`
+
+- Only admins can write.
+- **Draft → publish** (`POST /api/notices` with `publish: true`, or `POST /:id/publish`): one
+  bulk insert of `notice` notifications to every **active** user in the audience, sent after
+  commit. Edits don't re-notify.
+- **Expiry:** `PATCH /:id/expire`, or `expiresAt`. Non-admins see only published, unexpired
+  notices for `all` or their role, pinned first.
+
+## Dashboards (SRS §4) — `GET /api/dashboard/{admin|teacher|student}`
+
+- One request per role, using `Promise.all` plus aggregation pipelines
+  (`services/dashboard.service.js`). Rates follow the attendance rules.
+- **Admin:** counts; pending approvals; today's rate; a 30-day trend; per-class comparison;
+  below-threshold students (same rule as the warning); upcoming meetings; the audit feed; and
+  **assignments without a schedule**.
+- **Teacher:** today's classes and those **still to mark**; a 30-day rate plus daily series per
+  section; frequent absentees (3+ absent days in 30); draft assessments; upcoming meetings.
+- **Student:** attendance % and counts with the monthly series; the latest absence alerts;
+  recent **published** results; upcoming invitations with their RSVP; unread count; notices.
+
+**Performance** (large seed: ~500 students, ~55k attendance records, free M0 Atlas, measured from
+the dev machine to the API on the same machine, so each call includes the Atlas round trips):
+
+| Endpoint                     | Run 1: cold / median / max | Run 2: cold / median / max | Size   |
+| ---------------------------- | -------------------------- | -------------------------- | ------ |
+| `GET /api/dashboard/admin`   | 709 / 408 / 1177 ms        | 342 / 362 / 374 ms         | 7.3 KB |
+| `GET /api/dashboard/teacher` | 637 / 540 / 565 ms         | 527 / 569 / 1018 ms        | 9.5 KB |
+| `GET /api/dashboard/student` | 310 / 310 / 320 ms         | 644 / 375 / 591 ms         | 3.2 KB |
+
+All under 2 s (worst single response 1.18 s; the spikes are shared-tier variance). The heaviest
+query, the below-threshold aggregation over the whole session, uses `sessionId_1_date_1` (IXSCAN)
+and takes about 200 ms. No extra indexes were needed beyond migration 003.
+
+Recheck with `--large` whenever dashboard queries change.
 
 ## Admin module (FR-ADM-01…06, 10, 11)
 
@@ -659,6 +779,10 @@ All routes use `authenticate` + `authorize('admin')` and live in `routes/user.ro
     Playgroup-A, a second teacher, and `day` / `weekday` = the most recent school day.
   - Also: `assign()`, `insertAttendance()`, `recentSchoolDays()` and `markBody()`.
   - Dates are relative to the real "today" (Dhaka), so tests hold on any date.
+- Results, meetings, notices and dashboards: `results.test.js`, `meetings.test.js`,
+  `notices-dashboards.test.js`. `apiAs(user)` has `get/post/patch/put/delete`.
+- When checking notifications, filter by type, title or `data`, not by position; the order
+  documents come back in isn't guaranteed.
 - Socket tests (`realtime.test.js`) run `initRealtime` on a random port and connect with
   `socket.io-client` using `transports: ['websocket']`.
 

@@ -12,6 +12,13 @@ import {
 import { requireDatabase } from '../middleware/requireDatabase.js';
 import { createAttendanceRouter } from './attendance.routes.js';
 import { createAuthRouter } from './auth.routes.js';
+import {
+  createAssessmentRouter,
+  createDashboardRouter,
+  createMeetingRouter,
+  createNoticeRouter,
+  createResultRouter,
+} from './feature.routes.js';
 import healthRoutes from './health.routes.js';
 import { createNotificationRouter } from './notification.routes.js';
 import { createUserRouter } from './user.routes.js';
@@ -41,6 +48,13 @@ export function createApiRouter({ selfRegistrationEnabled, testRouter } = {}) {
   // Attendance & notifications
   router.use('/attendance', createAttendanceRouter());
   router.use('/notifications', createNotificationRouter());
+
+  // Results, meetings, notices, dashboards
+  router.use('/assessments', createAssessmentRouter());
+  router.use('/results', createResultRouter());
+  router.use('/meetings', createMeetingRouter());
+  router.use('/notices', createNoticeRouter());
+  router.use('/dashboard', createDashboardRouter());
 
   // Test-only routes (never passed in production code).
   if (testRouter) router.use('/test', testRouter);

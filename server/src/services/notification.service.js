@@ -8,6 +8,8 @@
  *
  * Build a fresh outbox inside the transaction callback: withTransaction may retry the callback.
  */
+import mongoose from 'mongoose';
+
 import { Notification } from '../models/index.js';
 import { sendEmail } from '../notifications/email.js';
 import { emitToUser } from '../realtime/io.js';
@@ -36,6 +38,36 @@ async function emitUnreadCount(userId) {
   emitToUser(userId, 'notifications:unread-count', { count: await countUnread(userId) });
 }
 
+/** Unread counts for many users in ONE aggregation (bulk notices / result publishing). */
+async function emitUnreadCounts(userIds) {
+  if (!userIds.length) return;
+  const rows = await Notification.aggregate([
+    {
+      $match: {
+        recipientId: { $in: userIds.map((id) => new mongoose.Types.ObjectId(String(id))) },
+        isRead: false,
+      },
+    },
+    { $group: { _id: '$recipientId', count: { $sum: 1 } } },
+  ]);
+  const counts = new Map(rows.map((r) => [String(r._id), r.count]));
+  for (const id of userIds) {
+    emitToUser(id, 'notifications:unread-count', { count: counts.get(String(id)) ?? 0 });
+  }
+}
+
+/**
+ * Create many notifications in one insertMany (inside the caller's transaction) and queue their
+ * 'notification:new' events. `docs`: [{ recipientId, type, title, message, data?, relatedEntity? }]
+ */
+export async function createNotifications(docs, { session, outbox }) {
+  if (!docs.length) return [];
+  const created = await Notification.insertMany(docs, { session, ordered: true });
+  for (const notification of created)
+    queueNotificationEvent(outbox, 'notification:new', notification);
+  return created;
+}
+
 /** Deliver everything queued in the outbox. Call only after the transaction committed. */
 export async function dispatchOutbox(outbox) {
   if (!outbox) return;
@@ -43,8 +75,7 @@ export async function dispatchOutbox(outbox) {
     for (const { userId, event, notification } of outbox.events) {
       emitToUser(userId, event, notification.toJSON?.() ?? notification);
     }
-    const users = [...new Set(outbox.events.map((e) => e.userId))];
-    await Promise.all(users.map(emitUnreadCount));
+    await emitUnreadCounts([...new Set(outbox.events.map((e) => e.userId))]);
   } catch (err) {
     logger.error('Real-time dispatch failed:', err);
   }

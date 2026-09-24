@@ -54,6 +54,7 @@ export function apiAs(user, app = createApp()) {
     get: (path) => withAuth('get', path),
     post: (path, body) => withAuth('post', path, body ?? {}),
     patch: (path, body) => withAuth('patch', path, body ?? {}),
+    put: (path, body) => withAuth('put', path, body ?? {}),
     delete: (path) => withAuth('delete', path),
   };
 }

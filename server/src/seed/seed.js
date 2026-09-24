@@ -3,6 +3,7 @@
  *
  *   npm run seed             # refuses if the database already has data
  *   npm run seed -- --reset  # clears LittleSteps collections first (re-runnable)
+ *   npm run seed -- --reset --large   # ~500 students, for performance testing
  *
  * Safety: never runs with NODE_ENV=production, and only writes to databases whose name
  * ends in _dev or _test.
@@ -16,11 +17,18 @@ import * as models from '../models/index.js';
 import { addDays, atSchoolTime, toDateKey, todaySchoolDate, weekdayOf } from '../utils/date.js';
 import { markAllApplied } from '../migrations/runner.js';
 import { hashPassword } from '../utils/password.js';
+import { insertInBatches, seedDemoContent } from './demoContent.js';
 import {
   ADMIN,
   AREAS,
+  BOY_NAMES,
   CLASSES,
+  FATHER_NAMES,
+  GIRL_NAMES,
+  LARGE_STUDENTS_PER_SECTION,
   LOW_ATTENDANCE,
+  MOTHER_NAMES,
+  SURNAMES,
   PASSWORDS,
   PERIOD_MINUTES,
   SCHOOL_DAYS,
@@ -47,7 +55,8 @@ const {
 
 const SAFE_DB_NAME = /_(dev|test)$/;
 const ATTENDANCE_DAYS_BACK = 30;
-const STUDENTS_PER_SECTION = 5;
+const LARGE = process.argv.includes('--large');
+const STUDENTS_PER_SECTION = LARGE ? LARGE_STUDENTS_PER_SECTION : 5;
 
 // Deterministic PRNG (mulberry32) so every run produces the same data for the same dates.
 function createRandom(seed) {
@@ -81,6 +90,15 @@ function addMinutesToTime(hhmm, minutes) {
 
 function bdMobile() {
   return `01${pick(['3', '5', '6', '7', '8', '9'])}${pad(randomInt(0, 99_999_999), 8)}`;
+}
+
+/** insertMany in batches of 5,000, returning the inserted documents in order. */
+async function insertManyReturning(Model, docs) {
+  const inserted = [];
+  for (let i = 0; i < docs.length; i += 5_000) {
+    inserted.push(...(await Model.insertMany(docs.slice(i, i + 5_000))));
+  }
+  return inserted;
 }
 
 function fail(message) {
@@ -154,7 +172,7 @@ async function main() {
   const subjects = await Subject.insertMany(SUBJECTS);
   const sections = await Section.insertMany(
     classes.flatMap((cls) =>
-      SECTION_NAMES.map((name) => ({ classId: cls._id, name, capacity: 25 })),
+      SECTION_NAMES.map((name) => ({ classId: cls._id, name, capacity: LARGE ? 70 : 25 })),
     ),
   );
   const sectionOf = (classIdx, sectionName) =>
@@ -206,7 +224,31 @@ async function main() {
   const assignments = await TeacherAssignment.insertMany(assignmentDocs);
 
   // --- Students --------------------------------------------------------------
-  const guardianContacts = STUDENTS.map((s) => ({
+  // Normal: the 40 named demo students. Large: synthetic names for 8 sections × 63 students,
+  // with ~5% deliberately low attendance.
+  const studentList = LARGE
+    ? Array.from(
+        { length: CLASSES.length * SECTION_NAMES.length * STUDENTS_PER_SECTION },
+        (_, i) => {
+          const girl = i % 2 === 1;
+          const surname = SURNAMES[i % SURNAMES.length];
+          const first = (girl ? GIRL_NAMES : BOY_NAMES)[Math.floor(i / 2) % BOY_NAMES.length];
+          return {
+            name: `${first} ${surname}`,
+            gender: girl ? 'female' : 'male',
+            father: `${FATHER_NAMES[i % FATHER_NAMES.length]} ${surname}`,
+            mother: MOTHER_NAMES[i % MOTHER_NAMES.length],
+            guardian: i % 3 === 0 ? 'father' : 'mother',
+          };
+        },
+      )
+    : STUDENTS;
+  const lowAttendance = LARGE
+    ? Object.fromEntries(
+        studentList.flatMap((_, i) => (random() < 0.05 ? [[i, 0.55 + random() * 0.15]] : [])),
+      )
+    : LOW_ATTENDANCE;
+  const guardianContacts = studentList.map((s) => ({
     phone: bdMobile(),
     email:
       random() < 0.6
@@ -217,11 +259,13 @@ async function main() {
         : undefined,
     address: pick(AREAS),
   }));
-  for (const [studentIdx, siblingIdx] of Object.entries(SIBLING_OF)) {
-    guardianContacts[studentIdx] = guardianContacts[siblingIdx];
+  if (!LARGE) {
+    for (const [studentIdx, siblingIdx] of Object.entries(SIBLING_OF)) {
+      guardianContacts[studentIdx] = guardianContacts[siblingIdx];
+    }
   }
 
-  const studentRows = STUDENTS.map((student, i) => {
+  const studentRows = studentList.map((student, i) => {
     const classIdx = Math.floor(i / (STUDENTS_PER_SECTION * SECTION_NAMES.length));
     const sectionName = SECTION_NAMES[Math.floor(i / STUDENTS_PER_SECTION) % SECTION_NAMES.length];
     const rollNo = (i % STUDENTS_PER_SECTION) + 1;
@@ -237,7 +281,8 @@ async function main() {
     };
   });
 
-  const studentUsers = await User.insertMany(
+  const studentUsers = await insertManyReturning(
+    User,
     studentRows.map(({ student, username, contact }) => ({
       name: student.name,
       username,
@@ -249,7 +294,8 @@ async function main() {
     })),
   );
 
-  await StudentProfile.insertMany(
+  await insertInBatches(
+    StudentProfile,
     studentRows.map((row, i) => ({
       userId: studentUsers[i]._id,
       rollNo: row.rollNo,
@@ -285,7 +331,7 @@ async function main() {
       .sort((a, b) => a.schedule[0].startTime.localeCompare(b.schedule[0].startTime));
 
     // Whole-day absences, placed at random school days.
-    const targetRatio = LOW_ATTENDANCE[i];
+    const targetRatio = lowAttendance[i];
     const absentCount =
       targetRatio !== undefined
         ? Math.ceil(schoolDays.length * (1 - targetRatio))
@@ -318,7 +364,26 @@ async function main() {
     });
     summary.push({ row, percent: schoolDays.length ? (attended / schoolDays.length) * 100 : 0 });
   });
-  await Attendance.insertMany(attendanceDocs, { ordered: false });
+  await insertInBatches(Attendance, attendanceDocs);
+
+  // --- Demo results, meetings, notices ------------------------------------------
+  const demo = await seedDemoContent({
+    admin,
+    teachers,
+    classes,
+    sections,
+    subjects,
+    session,
+    settings,
+    schoolDays,
+    random,
+    large: LARGE,
+    students: studentRows.map((row, i) => ({
+      user: studentUsers[i],
+      classId: classes[row.classIdx]._id,
+      sectionId: sectionOf(row.classIdx, row.sectionName)._id,
+    })),
+  });
 
   // --- Report ----------------------------------------------------------------
   const below = summary.filter((s) => s.percent < settings.attendanceThreshold);
@@ -333,8 +398,12 @@ async function main() {
     `  Attendance         ${attendanceDocs.length} records over ${schoolDays.length} school days ` +
       `(${toDateKey(schoolDays[0])} → ${toDateKey(schoolDays.at(-1))}, off: ${settings.weeklyOffDays.join('/')}; today left unmarked)`,
   );
-  console.log(`\n  Below ${settings.attendanceThreshold}% attendance:`);
-  for (const { row, percent } of below) {
+  console.log(
+    `  Demo content       ${demo.assessments} assessments (${demo.results} results), ` +
+      `${demo.meetings} meetings, ${demo.notices} notices, ${demo.notifications} notifications`,
+  );
+  console.log(`\n  Below ${settings.attendanceThreshold}% attendance: ${below.length} students`);
+  for (const { row, percent } of below.slice(0, 10)) {
     console.log(
       `    ${row.student.name.padEnd(22)} ${CLASSES[row.classIdx].name}-${row.sectionName}  ${percent.toFixed(1)}%`,
     );
@@ -343,7 +412,8 @@ async function main() {
   const credentialRows = [
     ['admin', ADMIN.name, ADMIN.username, PASSWORDS.admin, ''],
     ...teachers.map((t, i) => ['teacher', t.name, t.username, PASSWORDS.teacher, CLASSES[i].name]),
-    ...studentRows.map((r) => [
+    // Large seed: only rolls 1–2 of each section are listed (the pattern covers the rest).
+    ...(LARGE ? studentRows.filter((r) => r.rollNo <= 2) : studentRows).map((r) => [
       'student',
       r.student.name,
       r.username,
@@ -358,6 +428,11 @@ async function main() {
   for (const [role, name, username, password, cls] of credentialRows) {
     console.log(
       `  ${role.padEnd(8)} ${name.padEnd(24)} ${username.padEnd(16)} ${password.padEnd(13)} ${cls}`,
+    );
+  }
+  if (LARGE) {
+    console.log(
+      `  … every other student follows <class>-<section>-01…${STUDENTS_PER_SECTION} / ${PASSWORDS.student}`,
     );
   }
   console.log(

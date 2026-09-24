@@ -4,8 +4,11 @@
  * - Files: src/migrations/NNN-short-name.js, each `export default { description, up }` where
  *   `up({ db, mongoose, logger })` receives the native Db. Applied in filename order.
  * - Applied migrations are recorded in the `migrations` collection (_id = file name without .js).
- * - A lock document (collection `migration_lock`) guarantees only one runner at a time; a lock
- *   older than LOCK_TTL_MS is considered stale (crashed runner) and taken over.
+ * - The lock is taken ONLY when something is pending (most starts have nothing to do, so
+ *   restarts and multiple instances never wait on each other). A lock document in
+ *   `migration_lock` guarantees one runner at a time; the holder refreshes `heartbeatAt` every
+ *   HEARTBEAT_MS, and a lock without a heartbeat for LOCK_STALE_MS is taken over (crashed or
+ *   killed runner, e.g. a dev --watch restart mid-migration).
  * - Runs via `npm run migrate` and automatically at server start-up (before listening).
  * - Every schema change needs a migration (see CLAUDE.md). `up` must be idempotent.
  */
@@ -21,7 +24,8 @@ import { logger as defaultLogger } from '../utils/logger.js';
 const MIGRATIONS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const FILE_RE = /^\d{3}-[\w-]+\.js$/;
 const LOCK_ID = 'lock';
-const LOCK_TTL_MS = 10 * 60 * 1000;
+const LOCK_STALE_MS = 30_000;
+const HEARTBEAT_MS = 5_000;
 const POLL_MS = 1_000;
 
 const collections = (db) => ({
@@ -50,15 +54,22 @@ async function acquireLock(db, { owner, waitMs }) {
   for (;;) {
     const now = new Date();
     try {
-      await lock.insertOne({ _id: LOCK_ID, owner, acquiredAt: now });
+      await lock.insertOne({ _id: LOCK_ID, owner, acquiredAt: now, heartbeatAt: now });
       return;
     } catch (err) {
       if (err?.code !== 11000) throw err;
     }
-    // Take over a stale lock left by a crashed runner.
+    // Take over a lock whose holder stopped sending heartbeats (crashed / killed).
+    const cutoff = new Date(now.getTime() - LOCK_STALE_MS);
     const stale = await lock.findOneAndUpdate(
-      { _id: LOCK_ID, acquiredAt: { $lt: new Date(now.getTime() - LOCK_TTL_MS) } },
-      { $set: { owner, acquiredAt: now } },
+      {
+        _id: LOCK_ID,
+        $or: [
+          { heartbeatAt: { $lt: cutoff } },
+          { heartbeatAt: { $exists: false }, acquiredAt: { $lt: cutoff } },
+        ],
+      },
+      { $set: { owner, acquiredAt: now, heartbeatAt: now } },
     );
     if (stale) return;
     if (Date.now() >= deadline) {
@@ -82,13 +93,28 @@ export async function runMigrations({
   const { db } = mongoose.connection;
   if (!db) throw new Error('Not connected to MongoDB');
 
+  const all = await loadMigrations(dir);
+  const pendingNow = async () => {
+    const done = new Set(await collections(db).applied.distinct('_id'));
+    return all.filter((m) => !done.has(m.id));
+  };
+  if (!(await pendingNow()).length) {
+    logger.info('Migrations: database is up to date');
+    return [];
+  }
+
   const owner = randomUUID();
   await acquireLock(db, { owner, waitMs: waitForLockMs });
+  const heartbeat = setInterval(() => {
+    collections(db)
+      .lock.updateOne({ _id: LOCK_ID, owner }, { $set: { heartbeatAt: new Date() } })
+      .catch(() => {});
+  }, HEARTBEAT_MS);
+  heartbeat.unref?.();
   try {
-    const all = await loadMigrations(dir);
-    const done = new Set(await collections(db).applied.distinct('_id'));
+    // Re-check under the lock: another instance may have just applied them.
     const applied = [];
-    for (const migration of all.filter((m) => !done.has(m.id))) {
+    for (const migration of await pendingNow()) {
       const started = Date.now();
       logger.info(`Applying migration ${migration.id} — ${migration.description ?? ''}`);
       await migration.up({ db, mongoose, logger });
@@ -103,6 +129,7 @@ export async function runMigrations({
     if (!applied.length) logger.info('Migrations: database is up to date');
     return applied;
   } finally {
+    clearInterval(heartbeat);
     await releaseLock(db, owner);
   }
 }

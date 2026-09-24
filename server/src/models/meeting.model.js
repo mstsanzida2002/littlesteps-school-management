@@ -10,7 +10,8 @@ export const MEETING_STATUS = Object.freeze({
   CANCELLED: 'cancelled',
   COMPLETED: 'completed',
 });
-export const INVITE_TARGETS = Object.freeze(['students', 'sections', 'classes', 'all']);
+// 'none' = no students (staff-only meeting; admins add teacherIds).
+export const INVITE_TARGETS = Object.freeze(['students', 'sections', 'classes', 'all', 'none']);
 export const MEETING_RESPONSES = Object.freeze(['will_attend', 'cannot_attend']);
 
 // What the organizer selected. Kept for display/editing; the resolved lists below are
@@ -21,6 +22,8 @@ const inviteSchema = new mongoose.Schema(
     studentIds: [{ type: ObjectId, ref: 'User' }],
     sectionIds: [{ type: ObjectId, ref: 'Section' }],
     classIds: [{ type: ObjectId, ref: 'Class' }],
+    // Admins only (FR-TCH-14).
+    teacherIds: [{ type: ObjectId, ref: 'User' }],
   },
   { _id: false },
 );
@@ -58,6 +61,9 @@ const meetingSchema = new mongoose.Schema(
     // Teachers invited by the admin (FR-TCH-14).
     inviteeTeacherIds: [{ type: ObjectId, ref: 'User' }],
     responses: { type: [responseSchema], default: [] },
+    cancelledAt: Date,
+    cancelledBy: ref('User', { required: false }),
+    cancelReason: { type: String, trim: true, maxlength: 500 },
   },
   baseSchemaOptions,
 );
@@ -67,6 +73,9 @@ const TARGET_LIST = { students: 'studentIds', sections: 'sectionIds', classes: '
 meetingSchema.pre('validate', function validateMeeting() {
   if (!this.venue && !this.onlineLink) {
     this.invalidate('venue', 'Provide a venue or an online link');
+  }
+  if (this.invite?.target === 'none' && !this.invite.teacherIds?.length) {
+    this.invalidate('invite.teacherIds', 'A staff-only meeting needs at least one teacher');
   }
   const listField = TARGET_LIST[this.invite?.target];
   if (listField && !this.invite[listField]?.length) {
@@ -80,5 +89,7 @@ meetingSchema.pre('validate', function validateMeeting() {
 meetingSchema.index({ inviteeStudentIds: 1, dateTime: -1 });
 meetingSchema.index({ inviteeTeacherIds: 1, dateTime: -1 });
 meetingSchema.index({ dateTime: -1 });
+meetingSchema.index({ organizerId: 1, dateTime: -1 });
+meetingSchema.index({ status: 1, dateTime: 1 });
 
 export const Meeting = mongoose.model('Meeting', meetingSchema);
