@@ -139,6 +139,8 @@ describe('POST /api/auth/refresh', () => {
     // Tab B lost the race and presents the old token.
     const lost = await refresh(first);
     expect(lost.status).toBe(401);
+    // The client retries only on this code.
+    expect(lost.body.code).toBe('TOKEN_ROTATED');
     // The cookie must not be cleared: the browser may already hold tab A's newer token.
     expect(refreshCookieFrom(lost)).toBeUndefined();
 
@@ -161,6 +163,7 @@ describe('POST /api/auth/refresh', () => {
 
     const reused = await refresh(first);
     expect(reused.status).toBe(401);
+    expect(reused.body.code).toBe('SESSION_INVALID');
     expect(refreshCookieFrom(reused)).toBe('ls_rt='); // cleared
 
     // The legitimate newest token is now dead too.
@@ -174,8 +177,12 @@ describe('POST /api/auth/refresh', () => {
     const user = await createUser();
     const { cookie } = await signIn(user);
 
-    expect((await refresh()).status).toBe(401);
-    expect((await refresh('ls_rt=garbage')).status).toBe(401);
+    const none = await refresh();
+    expect(none.status).toBe(401);
+    expect(none.body.code).toBe('NO_SESSION');
+    const garbage = await refresh('ls_rt=garbage');
+    expect(garbage.status).toBe(401);
+    expect(garbage.body.code).toBe('SESSION_INVALID');
 
     await RefreshToken.updateOne(
       { tokenHash: hashToken(cookieValue(cookie)) },

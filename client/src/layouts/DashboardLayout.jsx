@@ -4,6 +4,7 @@ import { Link, NavLink, Outlet, useNavigate } from 'react-router';
 import { Spinner } from '../components/ui/Spinner.jsx';
 import { APP_NAME, NAV_ITEMS, ROUTES } from '../config/constants.js';
 import { useAuth } from '../features/auth/hooks/useAuth.js';
+import { NotificationBell } from '../features/notifications/components/NotificationBell.jsx';
 
 /** Shared shell for admin / teacher / student areas. Sidebar on desktop, drawer on mobile. */
 export default function DashboardLayout({ role }) {
@@ -80,8 +81,8 @@ export default function DashboardLayout({ role }) {
               <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
             </svg>
           </button>
-          {/* TODO(notifications): bell with unread count */}
           <div className="ml-auto flex items-center gap-3">
+            <NotificationBell />
             {user && (
               <div className="text-right leading-tight">
                 <p className="font-bold text-slate-800">{user.name}</p>

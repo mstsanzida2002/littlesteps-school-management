@@ -34,12 +34,26 @@ describe('GET /api/health', () => {
 
 describe('unknown routes', () => {
   it('returns 404 with the standard error envelope', async () => {
-    const res = await request(app).get('/api/does-not-exist');
+    const res = await request(app).get('/does-not-exist');
 
     expect(res.status).toBe(404);
     expect(res.body).toMatchObject({
       success: false,
       message: expect.stringContaining('not found'),
     });
+  });
+});
+
+describe('database unavailable', () => {
+  // This file never connects to MongoDB, so every DB-backed route must fail fast with 503.
+  it('returns 503 DATABASE_UNAVAILABLE for API routes but keeps /api/health up', async () => {
+    const res = await request(app).post('/api/auth/login').send({ identifier: 'a', password: 'b' });
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({
+      success: false,
+      code: 'DATABASE_UNAVAILABLE',
+      message: expect.stringMatching(/^Service temporarily unavailable/),
+    });
+    expect((await request(app).get('/api/health')).status).toBe(200);
   });
 });

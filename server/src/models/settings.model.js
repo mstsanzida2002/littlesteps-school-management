@@ -66,6 +66,9 @@ const settingsSchema = new mongoose.Schema(
     },
     attendanceThreshold: { type: Number, default: 75, min: 0, max: 100 },
     lateCountsAsPresent: { type: Boolean, default: true },
+    // Teachers may mark/edit attendance only for dates within this many days of today (Dhaka).
+    // Admins are not limited.
+    attendanceBackdateDays: { type: Number, default: 7, min: 0, max: 365 },
     weeklyOffDays: {
       type: [{ type: String, enum: WEEKDAYS }],
       default: () => ['friday', 'saturday'],

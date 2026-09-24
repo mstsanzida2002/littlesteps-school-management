@@ -32,6 +32,13 @@ const notificationSchema = new mongoose.Schema(
       kind: { type: String, enum: RELATED_ENTITY_KINDS },
       id: { type: mongoose.Schema.Types.ObjectId, refPath: 'relatedEntity.kind' },
     },
+    /**
+     * Structured payload for the client, e.g. for 'absence':
+     * { date: 'YYYY-MM-DD', subjects: [{ subjectId, subject, teacher, attendanceId }], corrected }
+     */
+    data: { type: mongoose.Schema.Types.Mixed },
+    // Groups updates into one notification, e.g. 'absence:<studentId>:<YYYY-MM-DD>'.
+    dedupeKey: { type: String },
     isRead: { type: Boolean, default: false },
     readAt: Date,
   },
@@ -39,5 +46,10 @@ const notificationSchema = new mongoose.Schema(
 );
 
 notificationSchema.index({ recipientId: 1, isRead: 1, createdAt: -1 });
+notificationSchema.index({ recipientId: 1, createdAt: -1 });
+notificationSchema.index(
+  { dedupeKey: 1 },
+  { unique: true, partialFilterExpression: { dedupeKey: { $type: 'string' } } },
+);
 
 export const Notification = mongoose.model('Notification', notificationSchema);

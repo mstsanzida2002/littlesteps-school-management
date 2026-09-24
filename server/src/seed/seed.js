@@ -14,6 +14,7 @@ import { connectDB, disconnectDB } from '../config/db.js';
 import { env } from '../config/env.js';
 import * as models from '../models/index.js';
 import { addDays, atSchoolTime, toDateKey, todaySchoolDate, weekdayOf } from '../utils/date.js';
+import { markAllApplied } from '../migrations/runner.js';
 import { hashPassword } from '../utils/password.js';
 import {
   ADMIN,
@@ -115,6 +116,9 @@ async function main() {
   }
 
   for (const model of Object.values(models)) await model.syncIndexes();
+  // Fresh data already has the current schema: record every migration as applied.
+  const baseline = await markAllApplied();
+  console.log(`Migrations marked as applied (baseline): ${baseline.join(', ') || 'none'}`);
 
   const [adminHash, teacherHash, studentHash] = await Promise.all([
     hashPassword(PASSWORDS.admin),

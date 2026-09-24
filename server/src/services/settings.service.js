@@ -5,7 +5,13 @@ import { Settings } from '../models/index.js';
 import { withBandRanges } from '../models/settings.model.js';
 import { diffChanges, recordAudit } from './audit.service.js';
 
-const EDITABLE = ['gradingScale', 'attendanceThreshold', 'lateCountsAsPresent', 'weeklyOffDays'];
+const EDITABLE = [
+  'gradingScale',
+  'attendanceThreshold',
+  'lateCountsAsPresent',
+  'attendanceBackdateDays',
+  'weeklyOffDays',
+];
 
 function present(settings) {
   const plain = settings.toObject();
@@ -13,6 +19,7 @@ function present(settings) {
     gradingScale: withBandRanges(plain.gradingScale),
     attendanceThreshold: plain.attendanceThreshold,
     lateCountsAsPresent: plain.lateCountsAsPresent,
+    attendanceBackdateDays: plain.attendanceBackdateDays,
     weeklyOffDays: plain.weeklyOffDays,
     updatedAt: plain.updatedAt,
   };

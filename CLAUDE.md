@@ -9,7 +9,7 @@ _brief_ (requirements + the structure a full IEEE-830 SRS should follow), not th
 
 ## Status
 
-Foundation, data layer, authentication and the admin module are done:
+Foundation, data layer, authentication, the admin module and attendance + notifications are done:
 
 - The server boots and `/api/health` works; the client shell, routing and data layer are in place.
 - All Mongoose models exist with tests, and a dev seed script is available.
@@ -17,9 +17,13 @@ Foundation, data layer, authentication and the admin module are done:
   guards.
 - **Admin module** (FR-ADM-01…06, 10, 11) is done on the server: users, registrations, academic
   structure, teacher assignments, settings and the audit log. The admin UI is not built yet.
-- **Deferred:** FR-ADM-07 (meetings), 08 (notices) and 09 (attendance/result overrides) are built
-  with their features, so admin and teacher share one service each.
-- Not yet built: teacher and student modules; the admin UI.
+- **Attendance** (FR-TCH-03…07, SRS 3.6), the attendance override (FR-ADM-09) and
+  **notifications** (FR-NOT-01…05: in-app, Socket.io, optional email) are done on the server.
+  The client has the notification bell with a live unread count.
+- **Deferred:** FR-ADM-07 (meetings), 08 (notices) and 09 (result overrides) are built with their
+  features.
+- Not yet built: results, meetings, notices, dashboards, the teacher and student UIs, the
+  notification list page (comes with the student module), and the admin UI.
 
 ## Stack
 
@@ -72,6 +76,7 @@ npm run lint           # ESLint both apps   (lint:fix to autofix)
 npm run format         # Prettier write     (format:check in CI)
 npm run build          # client production build
 npm run seed -- --reset   # wipe + reseed the dev database (see "Databases & seed")
+npm run migrate           # apply pending migrations (-- --status to list them)
 ```
 
 Env: copy `server/.env.example` → `server/.env`, `client/.env.example` → `client/.env.local`.
@@ -99,6 +104,43 @@ Env: copy `server/.env.example` → `server/.env`, `client/.env.example` → `cl
     `<class>-<section>-<roll>` (e.g. `kg1-a-03`) / `Student@1234`. The script prints them all.
 - The free M0 tier throttles bursts: keep bulk maintenance operations sequential, not
   `Promise.all` over every collection.
+
+## Migrations (every schema change needs one)
+
+- **Rule:** any schema change (new field, changed default, new or changed index, renamed field)
+  ships with a migration in `server/src/migrations/NNN-short-name.js`:
+  `export default { description, async up({ db, mongoose, logger }) { … } }`.
+  - Migrations are forward-only (no "down"). `up` must be **idempotent**, e.g. using
+    `$exists: false` filters and `createIndex`.
+  - Use the native `db` handle, not the Mongoose models, so a migration keeps working after the
+    models change.
+- **Runner** (`src/migrations/runner.js`): applies pending files in name order and records each in
+  the `migrations` collection.
+  - A lock document in `migration_lock` serializes runners (several instances, or startup racing
+    a manual run). A lock older than 10 min is treated as stale and taken over.
+  - If a migration fails, it isn't recorded and the lock is released.
+- **Two ways to run them (both are safe together, because of the lock):**
+  1. **Automatically at server start-up**, before listening (`server.js`). If a migration fails,
+     the server exits, so it never serves traffic on a half-migrated database. In development,
+     when the first connection is retried in the background, migrations run once it succeeds.
+     This way deploys don't depend on the host.
+  2. **Manually or as a pre-deploy step:** `npm run migrate` (status: `npm run migrate -- --status`).
+     On Render, it can be the Pre-Deploy Command (`npm run migrate -w server`), but that's
+     optional.
+- `seed --reset` records every migration as applied (baseline), since freshly seeded data already
+  has the current schema.
+- Applied so far: `001-teacher-assignment-status`, `002-attendance-notifications`.
+
+## Database outages
+
+- While MongoDB is unreachable, every `/api` route except `/api/health` returns **503
+  `DATABASE_UNAVAILABLE`** "Service temporarily unavailable" (`middleware/requireDatabase.js`).
+  `bufferTimeoutMS` is 5 s, and driver/selection errors are also mapped to 503.
+- **Development:** if the first connection fails, the API still starts and retries in the
+  background (5 s → 60 s backoff), then runs migrations.
+- **Production:** if the first connection fails, the server exits so the deploy fails loudly;
+  Render restarts it.
+- After any successful connect, the MongoDB driver reconnects on its own.
 
 ## Layout
 
@@ -259,8 +301,13 @@ stack? }`. Produced solely by `middleware/errorHandler.js`; stack only in dev fo
    - `User.mustChangePassword`.
    - `TeacherAssignment.status` (`active | ended`), plus `endedAt` and `endedBy`.
    - Roles are fixed after creation (no promote/demote).
+10. **Attendance and notification additions** (migration 002):
+    - `StudentProfile.attendanceAlert { belowThreshold, since, lastPercent }`.
+    - `Settings.attendanceBackdateDays` (default 7).
+    - `Notification.data` (structured payload) and `Notification.dedupeKey` (partial unique
+      index; `absence:<studentId>:<YYYY-MM-DD>`).
 
-## Attendance feature rules (for implementation)
+## Attendance feature rules
 
 - **Mark once per class-section per day:** the teacher marks a class-section once for the day,
   and the service creates one Attendance record for **every subject that teacher has scheduled in
@@ -280,6 +327,78 @@ stack? }`. Produced solely by `middleware/errorHandler.js`; stack only in dev fo
 - The timetable is guaranteed consistent by the admin module: no teacher clashes and no
   class-section clashes. So "subjects scheduled for this class-section on this weekday" is
   unambiguous.
+
+### Attendance implementation (`services/attendance*.js`, `routes/attendance.routes.js`)
+
+| Endpoint                                                            | Who                           | Notes                                       |
+| ------------------------------------------------------------------- | ----------------------------- | ------------------------------------------- |
+| `POST /api/attendance`                                              | teacher                       | mark a class-section for a date (below)     |
+| `GET /api/attendance/today`                                         | teacher                       | own class-sections: marked/partial/pending  |
+| `GET /api/attendance/class-sections/:c/:s/sheet?date=`              | assigned teacher, admin       | students, subjects, existing records        |
+| `PATCH /api/attendance/:id`                                         | teacher, admin                | edit one record `{ status, reason }`        |
+| `PATCH /api/attendance/students/:id/days/:date`                     | teacher, admin                | whole day `{ status, reason, subjectIds? }` |
+| `GET /api/attendance/student/:id/summary` / `history`               | self, assigned teacher, admin | overall, per subject, per month             |
+| `GET /api/attendance/class-sections/:c/:s/summary`                  | assigned teacher, admin       | daily rates + per-student table             |
+| `/api/notifications` (list, `unread-count`, `:id/read`, `read-all`) | any signed-in user            | own notifications only                      |
+
+**Marking**
+
+- Body: `{ classId, sectionId, date, defaultStatus?, entries[{ studentId, status }], subjectIds? }`.
+  - `defaultStatus` = "mark all present" (the entries are then the exceptions). Otherwise every
+    enrolled student needs an entry.
+  - Students = enrolled in that class-section in the active session, with `admissionDate` on or
+    before the date.
+- **Subjects** = the teacher's active assignments scheduled on that weekday.
+  - With `subjectIds`, exactly those subjects are marked (unscheduled classes, substitutions).
+    They must be the teacher's **own** subjects for that class-section (otherwise 403), and the
+    audit entry records `timetableOverride`.
+  - Nothing scheduled → 422 `NO_SCHEDULED_SUBJECTS`, telling the teacher to choose subjects
+    manually.
+- **Date rules**, all 422: `FUTURE_DATE`, `OUTSIDE_SESSION`, `OFF_DAY`, and `BACKDATE_LIMIT`.
+  - The backdate limit applies to teachers only: dates older than
+    `Settings.attendanceBackdateDays`. The message says an admin can make the change.
+  - Admins have no limit, and don't take attendance themselves; they override through edits.
+- **Already marked** → 409 `ALREADY_MARKED`, with `details.edit` pointing to the edit endpoints.
+  The unique index `(studentId, subjectId, date)` is the final guard.
+- **One transaction** covers: `bulkWrite` of the records, the absence notifications, the
+  low-attendance check, and the audit entry `attendance.mark`.
+
+**Edits** (`attendanceEdit.service.js`), one service for both roles
+
+- Teachers can edit only subjects in their active assignments, within the backdate limit. On a
+  whole-day edit they only change their own subjects.
+- Admins can edit anything; the audit entry is `attendance.override` with `override: true`.
+- The reason is required.
+- **One transaction** covers: the status change (optimistic check), `AttendanceEditLog`, AuditLog,
+  the absence notification re-sync, the correction notification and the low-attendance re-check.
+
+**Notifications** (`attendanceAlerts.service.js`)
+
+- The absence notification is **recomputed from the records** (`syncAbsenceNotification`):
+  - created on the first absence;
+  - updated when more subjects are absent (and set unread again);
+  - shrunk by corrections, and kept but marked `corrected` when no absence remains.
+- `attendance_corrected`: one per edit per student, listing each change away from Absent.
+- **Low attendance:** a warning is sent only when `attendanceAlert.belowThreshold` flips to true.
+  - It needs at least **5 recorded school days**, and uses the current threshold and
+    `lateCountsAsPresent`.
+  - Recovery resets the flag silently, so a later drop warns again.
+- **Outbox rule:** create or update Notification documents _inside_ the transaction and queue
+  deliveries in an outbox (`createOutbox`, `queueNotificationEvent`, `queueEmail`).
+  `dispatchOutbox` runs **only after commit**. Build the outbox inside the transaction callback,
+  because it may be retried. Never emit or send from inside a transaction.
+- **Email** (guardians, only if they have an email address):
+  - absence: only when the day's notification is **first created**;
+  - low attendance: on each crossing;
+  - none for markings or edits of dates **older than 1 day** (in-app notifications are still
+    created).
+
+**Summaries** (`attendanceSummary.service.js`)
+
+- Built with aggregation `$facet`, counting only recorded classes. `percent` is `null` when
+  nothing was recorded.
+- Months come from `$dateToString '%Y-%m'` in UTC, which is correct because dates are stored as
+  UTC midnight of the Dhaka date.
 
 ## Results feature rules (for implementation)
 
@@ -442,13 +561,47 @@ All routes use `authenticate` + `authorize('admin')` and live in `routes/user.ro
 - `refreshSession()` is **single-flight** and shared by app start-up (`AuthProvider` →
   `bootstrapSession()`) and the Axios 401 retry. StrictMode double effects and parallel 401s
   therefore send one request.
-- On a 401 it **retries once after 400 ms**, because another tab may have just rotated the
-  cookie.
+- Refresh failures carry a code: `NO_SESSION` (no cookie), `TOKEN_ROTATED` (grace-window race)
+  or `SESSION_INVALID`. The client **retries once after 400 ms only on `TOKEN_ROTATED`**; the
+  others fail immediately.
+- Access tokens carry `sid` (the login's refresh family), so logout disconnects only that
+  device's sockets.
 - A failed refresh clears **local state only** (token → query cache → auth state). **Never call
   `POST /auth/logout` automatically**: only the user's Log out button does. It then broadcasts
   `{ type: 'logout' }` on the `littlesteps-auth` BroadcastChannel so every tab clears
   immediately.
 - Logout always clears the whole TanStack Query cache, since phones are shared.
+
+## Real-time (Socket.io) and email
+
+- **Server** (`src/realtime/io.js`):
+  - Attached to the HTTP server at `/socket.io`. CORS allows `CLIENT_ORIGINS` only; no cookies.
+  - **Handshake:** `auth.token` must be an access token that passes the same checks as HTTP
+    (`userFromAccessToken`: signature, expiry, active, `tokenVersion`). Users with
+    `mustChangePassword` are rejected.
+  - Each socket joins `user:<id>`.
+  - **Events:** `notification:new`, `notification:updated`, `notifications:unread-count`.
+  - **Disconnects:**
+    - at access-token expiry;
+    - all of a user's sockets on `invalidateUserSessions` (suspension, password change/reset);
+    - that login's sockets on logout (`sid`).
+    - These are wired through `utils/sessionEvents.js`, so token.service doesn't import
+      realtime.
+  - In-memory adapter: **one API instance**. Scaling out needs the Redis adapter.
+  - All emit helpers do nothing when Socket.io isn't initialised (tests, scripts).
+- **Client** (`client/src/lib/socket.js`):
+  - Connects to `VITE_SOCKET_URL`: empty in development (Vite proxies `/socket.io` with
+    `ws: true`), the **Render origin** in production, because Vercel rewrites can't proxy
+    WebSockets. So the server's `CLIENT_ORIGIN` must include the Vercel domain.
+  - Follows `tokenStore` (reconnects with each new token). After a server disconnect or an
+    expired-token rejection, it refreshes the session.
+  - `useUnreadCount` gets pushes over the socket and polls every 60 s while disconnected.
+- **Email** (`src/notifications/email.js`): one provider interface, `send({ to, subject, text })`.
+  - Providers: `smtp` (Nodemailer), `resend` (HTTPS API, for hosts that block SMTP) and
+    `console`.
+  - Off unless `EMAIL_ENABLED=true`. Provider settings are validated in `env.js` only when
+    enabled. Failures are logged and never thrown.
+  - Tests use `setEmailProvider(recorder)`.
 
 ## Same-origin API (deployment decision)
 
@@ -472,7 +625,8 @@ All routes use `authenticate` + `authorize('admin')` and live in `routes/user.ro
 - **All date logic goes through the shared date utility**:
   - server: `server/src/utils/date.js` — `toSchoolDate`, `todaySchoolDate`, `toDateKey`,
     `isValidDateKey`, `addDays`, `monthRange`, `schoolDateKeyOf`, `weekdayOf`,
-    `atSchoolTime(schoolDate, 'HH:mm')` (wall-clock time in Dhaka → real instant)
+    `atSchoolTime(schoolDate, 'HH:mm')` (wall-clock time in Dhaka → real instant), `daysBetween`,
+    `formatSchoolDateLong` ("Thu, 24 Sep 2026", for messages)
   - client: `client/src/utils/date.js` — `todayDateKey`, `formatSchoolDate` (formats in UTC so the
     day never shifts), `formatDateTime` (real instants, shown in Asia/Dhaka)
   - Never use `new Date().setHours(0,0,0,0)`, `toLocaleDateString()` without a timeZone, or raw
@@ -500,6 +654,13 @@ All routes use `authenticate` + `authorize('admin')` and live in `routes/user.ro
   atomicity test in `admin.registration.test.js`.
 - Tests never read `server/.env`; `vitest.config.js` sets `JWT_ACCESS_SECRET` and
   `BCRYPT_ROUNDS=4`.
+- Attendance tests: `tests/helpers/attendance.js`.
+  - `createAttendanceSchool()` gives a session spanning today ±90 days, 3 students in
+    Playgroup-A, a second teacher, and `day` / `weekday` = the most recent school day.
+  - Also: `assign()`, `insertAttendance()`, `recentSchoolDays()` and `markBody()`.
+  - Dates are relative to the real "today" (Dhaka), so tests hold on any date.
+- Socket tests (`realtime.test.js`) run `initRealtime` on a random port and connect with
+  `socket.io-client` using `transports: ['websocket']`.
 
 ## Don'ts
 
@@ -512,3 +673,5 @@ All routes use `authenticate` + `authorize('admin')` and live in `routes/user.ro
   handling, only from an explicit user action.
 - Don't add a protected route without `authenticate` + `authorize`, plus an ownership guard when
   it is scoped to a class-section or a student.
+- Don't change a schema without a migration.
+- Don't emit sockets or send emails inside a transaction; queue them in the outbox.

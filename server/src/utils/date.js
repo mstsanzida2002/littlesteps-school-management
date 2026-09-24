@@ -114,6 +114,30 @@ function schoolOffsetMs(instant) {
   return wallClock - Math.floor(instant.getTime() / 1000) * 1000;
 }
 
+/** Whole calendar days from `from` to `to` (both stored school dates); negative if `to` is earlier. */
+export function daysBetween(from, to) {
+  assertNormalized(from);
+  assertNormalized(to);
+  return Math.round((to.getTime() - from.getTime()) / MS_PER_DAY);
+}
+
+const longDateFormatter = new Intl.DateTimeFormat('en-US', {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  timeZone: 'UTC', // stored school dates are UTC midnight of the calendar day
+});
+
+/** Human-readable school date for messages, e.g. "Thu, 24 Sep 2026" (locale-independent order). */
+export function formatSchoolDateLong(schoolDate) {
+  assertNormalized(schoolDate);
+  const p = Object.fromEntries(
+    longDateFormatter.formatToParts(schoolDate).map(({ type, value }) => [type, value]),
+  );
+  return `${p.weekday}, ${p.day} ${p.month} ${p.year}`;
+}
+
 /** Weekday name ('sunday'…'saturday') of a stored school date. */
 export function weekdayOf(schoolDate) {
   assertNormalized(schoolDate);

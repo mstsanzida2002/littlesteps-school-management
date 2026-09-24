@@ -49,6 +49,7 @@ export const updateSettingsSchema = z
     gradingScale: gradingScaleSchema.optional(),
     attendanceThreshold: z.number().min(0).max(100).optional(),
     lateCountsAsPresent: z.boolean().optional(),
+    attendanceBackdateDays: z.number().int().min(0).max(365).optional(),
     weeklyOffDays: z
       .array(z.enum(WEEKDAYS))
       .max(6, 'At least one day must be a school day')

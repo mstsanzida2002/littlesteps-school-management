@@ -27,6 +27,18 @@ export const ERROR_CODES = Object.freeze({
   USER_HAS_HISTORY: 'USER_HAS_HISTORY',
   ROLL_NUMBER_TAKEN: 'ROLL_NUMBER_TAKEN',
   LAST_ADMIN: 'LAST_ADMIN',
+  DATABASE_UNAVAILABLE: 'DATABASE_UNAVAILABLE',
+  // Refresh failures: the client retries only on TOKEN_ROTATED (another tab won the race).
+  NO_SESSION: 'NO_SESSION',
+  TOKEN_ROTATED: 'TOKEN_ROTATED',
+  SESSION_INVALID: 'SESSION_INVALID',
+  // Attendance
+  FUTURE_DATE: 'FUTURE_DATE',
+  OUTSIDE_SESSION: 'OUTSIDE_SESSION',
+  OFF_DAY: 'OFF_DAY',
+  BACKDATE_LIMIT: 'BACKDATE_LIMIT',
+  NO_SCHEDULED_SUBJECTS: 'NO_SCHEDULED_SUBJECTS',
+  ALREADY_MARKED: 'ALREADY_MARKED',
 });
 
 // Single-school deployment. All calendar-date logic goes through utils/date.js.

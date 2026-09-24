@@ -1,4 +1,4 @@
-import { ACCOUNT_STATUS, ROLES } from '../config/constants.js';
+import { ACCOUNT_STATUS, ERROR_CODES, ROLES } from '../config/constants.js';
 import { User } from '../models/index.js';
 import { ApiError } from '../utils/ApiError.js';
 import { hashPassword, verifyPassword } from '../utils/password.js';
@@ -49,7 +49,9 @@ export async function login({ identifier, password }, meta) {
 /** POST /auth/refresh */
 export async function refresh(refreshToken, meta) {
   if (!refreshToken) {
-    const error = ApiError.unauthorized('No active session');
+    const error = new ApiError(401, 'No active session', undefined, {
+      code: ERROR_CODES.NO_SESSION,
+    });
     error.clearCookie = false;
     throw error;
   }

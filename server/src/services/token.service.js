@@ -5,10 +5,11 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
 import { errors as joseErrors, jwtVerify, SignJWT } from 'jose';
 
-import { ACCOUNT_STATUS } from '../config/constants.js';
+import { ACCOUNT_STATUS, ERROR_CODES } from '../config/constants.js';
 import { env } from '../config/env.js';
 import { RefreshToken, User } from '../models/index.js';
 import { ApiError } from '../utils/ApiError.js';
+import { sessionEvents } from '../utils/sessionEvents.js';
 
 const ACCESS_KEY = new TextEncoder().encode(env.JWT_ACCESS_SECRET);
 const JWT_ALG = 'HS256';
@@ -27,8 +28,12 @@ export const ROTATION_GRACE_MS = 10_000;
 // ---------------------------------------------------------------------------
 // Access tokens
 
-export function signAccessToken(user) {
-  return new SignJWT({ role: user.role, tv: user.tokenVersion ?? 0 })
+/**
+ * @param user   { _id, role, tokenVersion }
+ * @param [sid]  the login's refresh-token family; lets logout disconnect only that device's sockets
+ */
+export function signAccessToken(user, sid) {
+  return new SignJWT({ role: user.role, tv: user.tokenVersion ?? 0, ...(sid && { sid }) })
     .setProtectedHeader({ alg: JWT_ALG, typ: JWT_TYP })
     .setSubject(String(user._id))
     .setIssuer(JWT_ISSUER)
@@ -78,16 +83,17 @@ export async function issueRefreshToken(user, { family = randomUUID(), ip, userA
 
 /** Access + refresh tokens for a user (a new session unless `family` is given). */
 export async function issueSession(user, meta = {}) {
+  const family = meta.family ?? randomUUID();
   const [accessToken, refresh] = await Promise.all([
-    signAccessToken(user),
-    issueRefreshToken(user, meta),
+    signAccessToken(user, family),
+    issueRefreshToken(user, { ...meta, family }),
   ]);
   return { accessToken, refreshToken: refresh.token, refreshExpiresAt: refresh.expiresAt };
 }
 
 /** 401 that also tells the controller whether the refresh cookie is definitely dead. */
-function refreshError(message, { clearCookie }) {
-  const error = ApiError.unauthorized(message);
+function refreshError(message, { clearCookie, code = ERROR_CODES.SESSION_INVALID }) {
+  const error = new ApiError(401, message, undefined, { code });
   error.clearCookie = clearCookie;
   return error;
 }
@@ -125,7 +131,10 @@ export async function rotateRefreshToken(token, meta = {}) {
     if (recentlyRotated) {
       // Another tab rotated this token a moment ago. Don't touch the cookie: the browser
       // may already hold that tab's newer token.
-      throw refreshError('Session was refreshed in another tab', { clearCookie: false });
+      throw refreshError('Session was refreshed in another tab', {
+        clearCookie: false,
+        code: ERROR_CODES.TOKEN_ROTATED,
+      });
     }
 
     // A revoked token was presented again: assume theft and end the whole session chain.
@@ -147,13 +156,19 @@ export async function rotateRefreshToken(token, meta = {}) {
   return { user, ...session };
 }
 
-/** Revoke one refresh token (logout). Unknown/already-revoked tokens are ignored. */
+/**
+ * Revoke one refresh token (logout) and disconnect that login's sockets.
+ * Unknown/already-revoked tokens are ignored.
+ */
 export async function revokeRefreshToken(token, reason = 'logout') {
   if (!token) return;
-  await RefreshToken.updateOne(
+  const revoked = await RefreshToken.findOneAndUpdate(
     { tokenHash: hashToken(token), revokedAt: null },
     { $set: { revokedAt: new Date(), revokedReason: reason } },
   );
+  if (revoked) {
+    sessionEvents.emit('session-ended', { userId: String(revoked.userId), sid: revoked.family });
+  }
 }
 
 /**
@@ -171,5 +186,6 @@ export async function invalidateUserSessions(userId, reason) {
     { userId, revokedAt: null },
     { $set: { revokedAt: new Date(), revokedReason: reason } },
   );
+  sessionEvents.emit('user-sessions-ended', { userId: String(userId) });
   return user?.tokenVersion;
 }

@@ -37,8 +37,35 @@ const envSchema = z
       .default('false')
       .transform((value) => value === 'true'),
     BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(15).default(12),
+
+    // --- Email to guardians (FR-NOT-05, optional) ---
+    EMAIL_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+    // smtp = Nodemailer; resend = HTTPS API (for hosts that block SMTP); console = log only
+    EMAIL_PROVIDER: z.enum(['smtp', 'resend', 'console']).default('console'),
+    EMAIL_FROM: z.string().trim().optional(),
+    SMTP_HOST: z.string().trim().optional(),
+    SMTP_PORT: z.coerce.number().int().positive().default(587),
+    SMTP_SECURE: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+    SMTP_USER: z.string().optional(),
+    SMTP_PASS: z.string().optional(),
+    RESEND_API_KEY: z.string().optional(),
   })
   .superRefine((val, ctx) => {
+    const require = (key, why) => {
+      if (!val[key])
+        ctx.addIssue({ code: 'custom', path: [key], message: `${key} is required ${why}` });
+    };
+    if (val.EMAIL_ENABLED && val.EMAIL_PROVIDER !== 'console') {
+      require('EMAIL_FROM', 'when EMAIL_ENABLED=true');
+      if (val.EMAIL_PROVIDER === 'smtp') require('SMTP_HOST', 'for EMAIL_PROVIDER=smtp');
+      if (val.EMAIL_PROVIDER === 'resend') require('RESEND_API_KEY', 'for EMAIL_PROVIDER=resend');
+    }
     if (val.NODE_ENV === 'production' && !val.MONGODB_URI) {
       ctx.addIssue({
         code: 'custom',

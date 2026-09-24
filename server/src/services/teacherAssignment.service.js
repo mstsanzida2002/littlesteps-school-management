@@ -128,7 +128,15 @@ export async function listAssignments({
   if (sectionId) filter.sectionId = sectionId;
   if (subjectId) filter.subjectId = subjectId;
   if (status) filter.status = status;
-  return paginate(TeacherAssignment, filter, { page, limit, sort, populate: POPULATE });
+  const { items, meta } = await paginate(TeacherAssignment, filter, {
+    page,
+    limit,
+    sort,
+    populate: POPULATE,
+  });
+  // hasSchedule lets the admin UI warn: without a schedule the assignment never appears in the
+  // "mark once" flow unless the teacher picks the subject manually.
+  return { items: items.map((a) => ({ ...a, hasSchedule: a.schedule.length > 0 })), meta };
 }
 
 /** POST /api/teacher-assignments — always in the active session. Re-assigning an ended combo reactivates it. */

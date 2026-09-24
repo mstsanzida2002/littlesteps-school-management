@@ -12,7 +12,14 @@ async function loadRequestUser(req) {
   const header = req.get('authorization') ?? '';
   const [scheme, token] = header.split(' ');
   if (scheme !== 'Bearer' || !token) throw ApiError.unauthorized('Authentication required');
+  return (await userFromAccessToken(token)).user;
+}
 
+/**
+ * Shared by HTTP (authenticate) and Socket.io handshakes: verify the token and re-check the user.
+ * Returns { user: { id, role, name, username, mustChangePassword }, payload }.
+ */
+export async function userFromAccessToken(token) {
   const payload = await verifyAccessToken(token);
 
   const user = await User.findById(payload.sub)
@@ -25,11 +32,14 @@ async function loadRequestUser(req) {
   }
 
   return {
-    id: String(user._id),
-    role: user.role,
-    name: user.name,
-    username: user.username,
-    mustChangePassword: Boolean(user.mustChangePassword),
+    payload,
+    user: {
+      id: String(user._id),
+      role: user.role,
+      name: user.name,
+      username: user.username,
+      mustChangePassword: Boolean(user.mustChangePassword),
+    },
   };
 }
 

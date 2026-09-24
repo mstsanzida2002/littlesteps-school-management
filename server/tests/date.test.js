@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   addDays,
   atSchoolTime,
+  daysBetween,
+  formatSchoolDateLong,
   isValidDateKey,
   monthRange,
   schoolDateKeyOf,
@@ -45,6 +47,13 @@ describe('date utility (Asia/Dhaka, stored as UTC midnight)', () => {
     expect(atSchoolTime(day, '08:00').toISOString()).toBe('2026-09-23T02:00:00.000Z');
     expect(atSchoolTime(day, '05:30').toISOString()).toBe('2026-09-22T23:30:00.000Z');
     expect(() => atSchoolTime(day, '8am')).toThrow(RangeError);
+  });
+
+  it('counts days between school dates and formats them for messages', () => {
+    const thu = toSchoolDate('2026-09-24');
+    expect(daysBetween(toSchoolDate('2026-09-17'), thu)).toBe(7);
+    expect(daysBetween(thu, toSchoolDate('2026-09-17'))).toBe(-7);
+    expect(formatSchoolDateLong(thu)).toBe('Thu, 24 Sep 2026');
   });
 
   it('returns the weekday of a school date', () => {

@@ -19,6 +19,12 @@ const studentProfileSchema = new mongoose.Schema(
     gender: { type: String, enum: GENDERS },
     guardian: { type: guardianSchema, required: true },
     admissionDate: schoolDate(),
+    // Low-attendance crossing state (FR-STU-04): the warning fires only when this flips to true.
+    attendanceAlert: {
+      belowThreshold: { type: Boolean, default: false },
+      since: Date,
+      lastPercent: Number,
+    },
   },
   baseSchemaOptions,
 );

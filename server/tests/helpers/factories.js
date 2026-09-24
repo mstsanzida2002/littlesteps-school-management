@@ -26,7 +26,7 @@ export async function createUser({
 }
 
 /** Access token for a user without going through /login. */
-export const tokenFor = (user) => signAccessToken(user);
+export const tokenFor = (user, sid) => signAccessToken(user, sid);
 
 /** The raw `ls_rt=<value>` pair from a response's Set-Cookie header (or undefined). */
 export function refreshCookieFrom(res) {

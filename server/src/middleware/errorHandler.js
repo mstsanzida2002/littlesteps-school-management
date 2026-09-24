@@ -4,6 +4,7 @@ import { ZodError } from 'zod';
 import { env } from '../config/env.js';
 import { ApiError } from '../utils/ApiError.js';
 import { logger } from '../utils/logger.js';
+import { databaseUnavailable } from './requireDatabase.js';
 
 /** Translate known library errors into ApiError so the response shape stays consistent. */
 function normalizeError(err) {
@@ -31,6 +32,16 @@ function normalizeError(err) {
   }
 
   // JWT (jose) errors are translated to 401s in services/token.service.js#verifyAccessToken.
+
+  // Query issued while MongoDB is unreachable (buffering timed out / no servers).
+  if (
+    err?.name === 'MongooseServerSelectionError' ||
+    err?.name === 'MongoServerSelectionError' ||
+    err?.name === 'MongoNotConnectedError' ||
+    /buffering timed out/.test(err?.message ?? '')
+  ) {
+    return databaseUnavailable();
+  }
 
   // Malformed JSON body from express.json()
   if (err?.type === 'entity.parse.failed') return ApiError.badRequest('Malformed JSON body');

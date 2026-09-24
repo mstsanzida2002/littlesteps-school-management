@@ -11,6 +11,7 @@
  */
 import { queryClient } from '../../app/queryClient.js';
 import { setRefreshHandler } from '../../lib/axios.js';
+import { setSocketRefreshHandler } from '../../lib/socket.js';
 import { tokenStore } from '../../lib/tokenStore.js';
 import { authApi } from './api/authApi.js';
 
@@ -82,9 +83,10 @@ async function runRefresh() {
   try {
     session = await authApi.refresh();
   } catch (err) {
-    if (err?.status !== 401) throw err;
-    // Another tab may have rotated the cookie a moment ago (server grace window). The browser
-    // now holds the newer cookie, so one retry usually succeeds.
+    // Retry only when another tab rotated the cookie a moment ago (server grace window): the
+    // browser now holds the newer cookie, so one retry succeeds. NO_SESSION / SESSION_INVALID
+    // fail immediately (no delay for signed-out visitors).
+    if (err?.code !== 'TOKEN_ROTATED') throw err;
     await sleep(REFRESH_RETRY_DELAY_MS);
     session = await authApi.refresh();
   }
@@ -103,6 +105,7 @@ export function refreshSession() {
 }
 
 setRefreshHandler(refreshSession);
+setSocketRefreshHandler(refreshSession);
 
 let bootstrapped = false;
 

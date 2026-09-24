@@ -9,8 +9,11 @@ import {
   createSubjectRouter,
   createTeacherAssignmentRouter,
 } from './admin.routes.js';
+import { requireDatabase } from '../middleware/requireDatabase.js';
+import { createAttendanceRouter } from './attendance.routes.js';
 import { createAuthRouter } from './auth.routes.js';
 import healthRoutes from './health.routes.js';
+import { createNotificationRouter } from './notification.routes.js';
 import { createUserRouter } from './user.routes.js';
 
 /**
@@ -21,6 +24,8 @@ export function createApiRouter({ selfRegistrationEnabled, testRouter } = {}) {
   const router = Router();
 
   router.use('/health', healthRoutes);
+  // Everything below needs MongoDB: 503 DATABASE_UNAVAILABLE while it is down.
+  router.use(requireDatabase);
   router.use('/auth', createAuthRouter({ selfRegistrationEnabled }));
 
   // Admin module (all admin-only)
@@ -32,6 +37,10 @@ export function createApiRouter({ selfRegistrationEnabled, testRouter } = {}) {
   router.use('/teacher-assignments', createTeacherAssignmentRouter());
   router.use('/settings', createSettingsRouter());
   router.use('/audit-logs', createAuditLogRouter());
+
+  // Attendance & notifications
+  router.use('/attendance', createAttendanceRouter());
+  router.use('/notifications', createNotificationRouter());
 
   // Test-only routes (never passed in production code).
   if (testRouter) router.use('/test', testRouter);

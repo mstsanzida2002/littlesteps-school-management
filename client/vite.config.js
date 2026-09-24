@@ -17,6 +17,9 @@ export default defineConfig(({ mode }) => {
       strictPort: true,
       proxy: {
         '/api': { target: apiTarget, changeOrigin: true },
+        // Socket.io (WebSocket upgrade). In production the client connects to VITE_SOCKET_URL
+        // directly because Vercel rewrites cannot proxy WebSockets.
+        '/socket.io': { target: apiTarget, changeOrigin: true, ws: true },
       },
     },
     preview: {
