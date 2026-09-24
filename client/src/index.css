@@ -1,28 +1,175 @@
 @import 'tailwindcss';
 
+/*
+ * LittleSteps design tokens — direction D "Guava" (docs/design/directions.html).
+ * Source palette: Charleston #1E3309, Citron #849A28, Cerise #E23260, Deep Blush #F2678E,
+ * Light Pink #FCA9AA.
+ *
+ * Contrast rules (WCAG AA):
+ * - Citron (3.2:1 on white) and Cerise (4.3:1) are fills and graphics only. Text in those hues
+ *   uses the *-700 / *-ink shades.
+ * - Every status is shown with an icon and a label (config/statuses.js), never colour alone.
+ */
 @theme {
-  --font-sans: 'Nunito', ui-sans-serif, system-ui, sans-serif;
+  /* Latin first; Hind Siliguri (Bangla) is only downloaded when Bangla text appears
+     (unicode-range subsets, font-display: swap — see main.jsx). */
+  --font-sans: 'Outfit Variable', 'Hind Siliguri', ui-sans-serif, system-ui, sans-serif;
+  --font-bangla: 'Hind Siliguri', 'Outfit Variable', ui-sans-serif, system-ui, sans-serif;
 
-  --color-brand-50: #f0fdfa;
-  --color-brand-100: #ccfbf1;
-  --color-brand-500: #14b8a6;
-  --color-brand-600: #0d9488;
-  --color-brand-700: #0f766e;
+  /* Brand: Charleston green */
+  --color-brand-50: #f5f8ee;
+  --color-brand-100: #e9f0da;
+  --color-brand-200: #d3e0b5;
+  --color-brand-300: #b2c785;
+  --color-brand-400: #8ca356;
+  --color-brand-500: #5f7a2c;
+  --color-brand-600: #3f5a17;
+  --color-brand-700: #2f4a12;
+  --color-brand-800: #1e3309;
+  --color-brand-900: #142306;
 
-  /* Attendance status colours (SRS: colour-coded statuses) */
-  --color-present: #16a34a;
-  --color-absent: #dc2626;
+  /* Citron: progress and "present" */
+  --color-citron-50: #f7f9ea;
+  --color-citron-100: #eef3d6;
+  --color-citron-200: #dde7ad;
+  --color-citron-300: #c3d474;
+  --color-citron-500: #849a28;
+  --color-citron-700: #4a5a0e;
+
+  /* Cerise and blush: accents, focus, "absent" */
+  --color-cerise-50: #fff1f4;
+  --color-cerise-100: #fde3e9;
+  --color-cerise-200: #fbc8d4;
+  --color-cerise-400: #f2678e;
+  --color-cerise-500: #e23260;
+  --color-cerise-600: #c81e4f;
+  --color-cerise-700: #b0173f;
+  --color-cerise-800: #8f1233;
+  --color-blush-50: #fff8f5;
+  --color-blush-100: #fdefea;
+  --color-blush-200: #fcd4d6;
+  --color-blush-300: #fca9aa;
+
+  /* Warm neutrals */
+  --color-sand-50: #fbf9f7;
+  --color-sand-100: #f3efeb;
+  --color-sand-200: #e9e2dc;
+  --color-sand-300: #d9d0c8;
+  --color-sand-400: #aaa197;
+  --color-sand-500: #736b63;
+  --color-sand-600: #5f5a52;
+  --color-sand-700: #45403a;
+  --color-sand-800: #2e2b26;
+
+  /* Semantic surfaces and text */
+  --color-page: #fff8f5;
+  --color-surface: #ffffff;
+  --color-ink: #1e2616;
+  --color-muted: #5f5a52;
+  --color-line: #f1e1dc;
+  --color-line-strong: #e3d3cd;
+  --color-focus: #e23260;
+
+  /* Status tones: fill (graphics), ink (text on soft or white), soft (badge background) */
+  --color-present: #849a28;
+  --color-present-ink: #4a5a0e;
+  --color-present-soft: #eef3d6;
+  --color-absent: #e23260;
+  --color-absent-ink: #b0173f;
+  --color-absent-soft: #fde3e9;
   --color-late: #d97706;
+  --color-late-ink: #8a4b04;
+  --color-late-soft: #fef1c7;
+  --color-excused: #7c6bd6;
+  --color-excused-ink: #4b3a99;
+  --color-excused-soft: #ece7fa;
+  --color-neutral: #aaa197;
+  --color-neutral-ink: #45403a;
+  --color-neutral-soft: #f2eeea;
+  --color-info: #3f5a17;
+  --color-info-ink: #2f4a12;
+  --color-info-soft: #e9f0da;
+
+  --radius-control: 0.75rem;
+  --radius-card: 1.125rem;
+
+  --shadow-card: 0 1px 2px rgb(30 51 9 / 0.05), 0 6px 16px rgb(158 22 64 / 0.06);
+  --shadow-raised: 0 4px 10px rgb(30 51 9 / 0.08), 0 18px 40px rgb(30 51 9 / 0.16);
+
+  --animate-fade-in: fade-in 160ms ease-out;
+  --animate-sheet-up: sheet-up 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-slide-left: slide-left 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-slide-right: slide-right 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-toast-in: toast-in 200ms ease-out;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes sheet-up {
+    from {
+      transform: translateY(100%);
+    }
+  }
+  @keyframes slide-left {
+    from {
+      transform: translateX(-100%);
+    }
+  }
+  @keyframes slide-right {
+    from {
+      transform: translateX(100%);
+    }
+  }
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
 }
 
 @layer base {
   html {
-    /* Guardians mostly use phones: slightly larger, readable base text. */
     font-size: 17px;
     -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
   }
-
   body {
-    @apply bg-slate-50 font-sans text-slate-800 antialiased;
+    @apply bg-page font-sans text-ink antialiased;
   }
+  /* Bangla needs taller lines for its vowel signs. Mark Bangla text with lang="bn". */
+  :lang(bn) {
+    font-family: var(--font-bangla);
+    line-height: 1.7;
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+  /* No scrolling behind an open modal or drawer. */
+  body:has(dialog[open]) {
+    overflow: hidden;
+  }
+  dialog::backdrop {
+    background: rgb(20 35 6 / 0.45);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after,
+    ::backdrop {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* Touch-friendly minimum size for any control: `touch-target`. */
+@utility touch-target {
+  min-height: 44px;
+  min-width: 44px;
 }

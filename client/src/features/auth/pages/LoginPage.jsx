@@ -1,9 +1,16 @@
-import { useState } from 'react';
+import { LogIn, User } from 'lucide-react';
 import { Navigate, useLocation } from 'react-router';
 
+import { Alert } from '../../../components/ui/Alert.jsx';
+import { Button } from '../../../components/ui/Button.jsx';
+import { FormField } from '../../../components/ui/FormField.jsx';
+import { Input, PasswordInput } from '../../../components/ui/Input.jsx';
+import { PageTitle } from '../../../components/ui/PageTitle.jsx';
 import { ROLE_HOME } from '../../../config/constants.js';
+import { useZodForm } from '../../../hooks/useZodForm.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { useLogin } from '../hooks/useLogin.js';
+import { loginSchema } from '../schemas.js';
 
 /** Where to go after sign-in: the page they wanted, if their role may see it; else their home. */
 function destinationFor(user, from) {
@@ -14,76 +21,53 @@ function destinationFor(user, from) {
     : home;
 }
 
-const inputClass =
-  'w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base focus:border-brand-600 focus:ring-2 focus:ring-brand-100 focus:outline-none';
-
 export default function LoginPage() {
   const { isAuthenticated, user } = useAuth();
   const location = useLocation();
   const loginMutation = useLogin();
-  const [form, setForm] = useState({ identifier: '', password: '' });
+  const form = useZodForm(loginSchema, { defaultValues: { identifier: '', password: '' } });
+  const { errors, isSubmitting } = form.formState;
 
   if (isAuthenticated) {
     return <Navigate to={destinationFor(user, location.state?.from)} replace />;
   }
 
-  const onChange = (event) => setForm((f) => ({ ...f, [event.target.name]: event.target.value }));
-  const onSubmit = (event) => {
-    event.preventDefault();
-    loginMutation.mutate(form);
-  };
-
   return (
     <>
-      <h1 className="text-2xl font-extrabold">Log in</h1>
-      <p className="mt-1 text-slate-600">Parents and guardians use the student&apos;s account.</p>
+      <PageTitle title="Log in" />
+      <h1 className="text-2xl font-bold">Log in</h1>
+      <p className="mt-1 text-muted">Parents and guardians use the student&apos;s account.</p>
 
-      <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-4" noValidate>
-        <div>
-          <label htmlFor="identifier" className="mb-1 block font-semibold">
-            Username or email
-          </label>
-          <input
+      <form
+        onSubmit={form.submit((values) => loginMutation.mutateAsync(values))}
+        className="mt-6 flex flex-col gap-4"
+        noValidate
+      >
+        <FormField label="Username or email" error={errors.identifier?.message}>
+          <Input
             id="identifier"
-            name="identifier"
+            icon={User}
             autoComplete="username"
             autoCapitalize="none"
-            required
-            value={form.identifier}
-            onChange={onChange}
-            className={inputClass}
+            autoCorrect="off"
+            spellCheck={false}
+            {...form.register('identifier')}
           />
-        </div>
+        </FormField>
 
-        <div>
-          <label htmlFor="password" className="mb-1 block font-semibold">
-            Password
-          </label>
-          <input
+        <FormField label="Password" error={errors.password?.message}>
+          <PasswordInput
             id="password"
-            name="password"
-            type="password"
             autoComplete="current-password"
-            required
-            value={form.password}
-            onChange={onChange}
-            className={inputClass}
+            {...form.register('password')}
           />
-        </div>
+        </FormField>
 
-        {loginMutation.isError && (
-          <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 font-semibold text-absent">
-            {loginMutation.error.message}
-          </p>
-        )}
+        {form.formError && <Alert tone="error">{form.formError}</Alert>}
 
-        <button
-          type="submit"
-          disabled={loginMutation.isPending || !form.identifier || !form.password}
-          className="rounded-lg bg-brand-600 px-4 py-3 text-lg font-bold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {loginMutation.isPending ? 'Signing in…' : 'Log in'}
-        </button>
+        <Button type="submit" size="lg" icon={LogIn} loading={isSubmitting} fullWidth>
+          {isSubmitting ? 'Signing in…' : 'Log in'}
+        </Button>
       </form>
     </>
   );

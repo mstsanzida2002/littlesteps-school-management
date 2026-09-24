@@ -23,8 +23,12 @@ The whole server side of the SRS is done; the UIs are next:
 - **Results** (FR-TCH-08…12, FR-STU-05, result override FR-ADM-09), **meetings** (FR-ADM-07,
   FR-TCH-13/14, FR-STU-06/07), **notices** (FR-ADM-08, FR-STU-08) and the three **dashboards**
   (SRS §4) are done on the server.
+- **Design system** (direction D "Guava", `docs/design/`) is done: tokens, the logo, shared
+  components, chart wrappers, forms with server errors, and the app shell. Login and change
+  password use it. See "Design system" below and `/styleguide` (development only).
 - Not yet built: the teacher, student and admin UIs (dashboards with charts, attendance taking,
-  result entry, meetings, notices) and the notification list page.
+  result entry, meetings, notices) and the notification list page. Their nav items show a
+  "coming soon" page.
 
 ## Stack
 
@@ -32,7 +36,8 @@ The whole server side of the SRS is done; the UIs are next:
 | ------- | --------------------------------------------------------------------------------------------- |
 | Server  | Node ≥ 20.19, Express **4** (not 5 — `express-mongo-sanitize` needs Express 4), Mongoose, Zod |
 | Client  | React 19, Vite, Tailwind CSS v4 (`@tailwindcss/vite`), React Router, TanStack Query v5, Axios |
-| Tests   | Vitest + Supertest (server), mongodb-memory-server for integration tests                      |
+| UI      | lucide-react icons, Recharts, react-hook-form + Zod (`zod/mini`), Fontsource fonts            |
+| Tests   | Vitest + Supertest (server), mongodb-memory-server for integration tests; Vitest (client)     |
 | Auth    | jose (JWT access tokens, HS256), bcryptjs (password hashing), opaque rotated refresh cookie   |
 | Tooling | npm workspaces, ESLint 9 flat config (per app), Prettier (root), concurrently                 |
 | Deploy  | Client → Vercel, Server → Render, DB → MongoDB Atlas                                          |
@@ -56,11 +61,17 @@ All dependencies are pinned to exact versions (no `^`/`~`); `.npmrc` sets `save-
 | supertest              | 7     | eslint-plugin-react-hooks       | 7     |
 | mongodb-memory-server  | 11    | prettier                        | 3     |
 | **jose**               | **6** | bcryptjs                        | 3     |
+|                        |       | **lucide-react**                | **1** |
+|                        |       | **recharts** (+ react-is 19)    | **3** |
+|                        |       | react-hook-form                 | 7     |
+|                        |       | **@hookform/resolvers**         | **5** |
+|                        |       | zod (client uses `zod/mini`)    | 4     |
+|                        |       | @fontsource(-variable)          | 5     |
 
 Exact versions are in each `package.json`.
 
 **Check the installed API; don't rely on memory.** Mongoose 9, React Router 8, Vite 8, Vitest 5 and jose 6
-(also Zod 4, dotenv 18, express-rate-limit 8) are newer than most examples online and than older
+(also Zod 4, dotenv 18, express-rate-limit 8, Recharts 3, lucide-react 1, @hookform/resolvers 5) are newer than most examples online and than older
 training data. Before using any API from them, check the installed package's type definitions
 (`node_modules/<pkg>/**/*.d.ts`) or its bundled docs/changelog. Don't copy patterns from older
 majors, e.g. `react-router-dom` imports, Mongoose callback APIs, `max` instead of `limit`
@@ -72,7 +83,7 @@ in express-rate-limit, or Zod 3's `error.errors`.
 npm install            # installs both workspaces
 npm run dev            # server :5000 + client :5173 concurrently
 npm run dev:server     # / dev:client
-npm test               # server tests (Vitest)
+npm test               # server + client tests (Vitest)
 npm run lint           # ESLint both apps   (lint:fix to autofix)
 npm run format         # Prettier write     (format:check in CI)
 npm run build          # client production build
@@ -180,12 +191,20 @@ server/tests/      *.test.js; helpers/db.js = in-memory Mongo replica set
 client/src/
   app/             router.jsx, queryClient.js, providers.jsx
   lib/             axios.js (the only Axios instance), tokenStore.js
-  config/          constants.js (ROLES, ROUTES, ROLE_HOME, NAV_ITEMS, SCHOOL_TIMEZONE)
+  config/          constants.js (ROLES, ROLE_LABELS, ROUTES, ROLE_HOME, NAV_ITEMS),
+                   statuses.js (every status → icon, label, tone)
   layouts/         PublicLayout, AuthLayout, DashboardLayout (role prop)
   routes/          ProtectedRoute (signed in?), RoleRoute (role allowed?)
-  components/ui/   shared presentational components
-  features/<auth|admin|teacher|student>/{api,hooks,components,pages}
-  hooks/ utils/ pages/   app-wide (non-feature) pieces
+  assets/brand/    logo-original.png (source) + logo-280/560 .webp/.png (transparent exports)
+  components/brand/  Logo, LogoMark (flat footprint SVG), LogoLink; logoAssets.js (srcsets, preload)
+  components/ui/     shared components (see "Design system")
+  components/layout/ Sidebar, AppHeader, BottomNav, MoreSheet (the dashboard shell)
+  components/charts/ TrendLineChart, ComparisonBarChart, CalendarHeatmap, ChartFigure, summaries
+  features/<auth|admin|teacher|student|notifications>/{api,hooks,components,pages}
+  hooks/           useZodForm, useMediaQuery, useDocumentTitle
+  dev/styleguide/  /styleguide page (development only; not in production builds)
+  __tests__/       client unit tests (Vitest, node environment)
+  utils/ pages/    app-wide (non-feature) pieces
 ```
 
 ## Server conventions
@@ -264,9 +283,98 @@ stack? }`. Produced solely by `middleware/errorHandler.js`; stack only in dev fo
 - Query keys: a `xKeys` factory per feature (`studentKeys.detail(id)`); invalidate on mutation.
 - Server state lives in TanStack Query — no Redux/Context copies of server data.
 - Pages are lazy-loaded in `app/router.jsx`; layouts provide the `<Suspense>` boundary.
-- Tailwind only (no CSS modules). Mobile-first: guardians mostly use phones. Use the theme
-  tokens in `index.css` (`brand-*`, `present`, `absent`, `late`).
+- Tailwind only (no CSS modules). Mobile-first (design at 375px, then scale up): guardians
+  mostly use phones, often mid-range Android on slow data. Use the tokens in `index.css`, never
+  raw hex values in components (chart SVG attributes use `components/charts/chartTheme.js`).
 - `RoleRoute`/`ProtectedRoute` are UX only — **security is enforced by the API**.
+
+## Design system (direction D "Guava")
+
+Palette from the logo: Charleston `#1E3309` (brand), Citron `#849A28`, Cerise `#E23260`, Deep
+Blush `#F2678E`, Light Pink `#FCA9AA`. Preview and screenshots: `docs/design/`.
+
+**Tokens** (`client/src/index.css`, Tailwind v4 `@theme`, no tailwind.config.js)
+
+- Scales `brand-*`, `citron-*`, `cerise-*`, `blush-*`, `sand-*`; semantic `page`, `surface`,
+  `ink`, `muted`, `line`, `line-strong`, `focus`; status tones `present`, `absent`, `late`,
+  `excused`, `neutral`, `info`, each with a fill, `-ink` (AA text) and `-soft` (background);
+  `rounded-card`, `rounded-control`, `shadow-card`, `shadow-raised`; the `touch-target` utility.
+- **Contrast:** Citron (3.2:1 on white) and Cerise (4.3:1) are fills and graphics only; text uses
+  the `-700` / `-ink` shades. **Cerise is never used for success.** Base font size 17px.
+- Fonts are self-hosted (Fontsource, imported in `main.jsx`): Outfit Variable (Latin) with Hind
+  Siliguri for Bangla. Both use unicode-range subsets and `font-display: swap`, so the Bangla
+  fonts download only when Bangla is on screen. Mark Bangla text with `lang="bn"` (font and
+  taller lines).
+
+**Statuses** (`config/statuses.js`): attendance, publication (draft/published), account, RSVP
+(`will_attend` / `cannot_attend` / null = no response) and meeting states. Every status has an
+icon **and** a label: render `<StatusBadge group value />` or use `getStatus()`; never colour
+alone. Add new statuses there (a unit test checks every server value).
+
+**Logo** (`components/brand`)
+
+- Full logo (`<Logo>`, `<LogoLink>`): login (large, centred; preloaded on `/login` only, by
+  `preloadLoginLogo()` in `main.jsx`, while the session check runs), the expanded sidebar and
+  the public header. Light surfaces only: its dark green "Little" disappears on dark ones.
+  width/height are always set, so it never shifts the layout. The link goes to the user's
+  dashboard, or to login when signed out; its name is "LittleSteps".
+- Compact mark (`<LogoMark>`, inline SVG of the logo's footprint): collapsed sidebar, mobile
+  header, loaders, and the icons in `public/` (`favicon.svg`, `favicon-32.png`,
+  `apple-touch-icon.png`).
+- The transparent logo was cut out automatically from the 3D render: clean on light backgrounds,
+  with faint patches in the soft shadows on dark ones. If a designer-made transparent PNG
+  arrives, re-export it with the same file names and the 280 × 241 ratio.
+
+**Components** (`components/ui`): Button/IconButton (`buttonClasses` for links), Input,
+PasswordInput, Textarea, Select (native), Checkbox, RadioGroup (`segmented` for fast status
+picking), DatePicker, FormField, Card, StatCard, Badge/StatusBadge, ProgressRing, Modal, Drawer,
+ConfirmDialog (optional required reason), Tabs/TabPanel, DataTable (a table from md, cards on
+phones), Pagination (API meta), SearchInput (debounced), FilterBar (bottom sheet on phones),
+EmptyState, ErrorState (by status), Alert, Skeleton, Toaster + `toast.*`, Avatar (Bangla
+initials), NotificationBell (presentational; the connected one is in `features/notifications`),
+Spinner, PageHeader (also sets the tab title) and PageTitle.
+
+- Dialogs are native `<dialog>` + `showModal()` (focus trap, Esc, focus return). Modals are
+  bottom sheets on phones.
+- **DatePicker values are `'YYYY-MM-DD'` Dhaka keys**, never Dates; build min/max with
+  `todayDateKey()` and `addDaysToKey()`.
+- Accessibility: 44px touch targets (`sm` buttons grow on coarse pointers), visible focus rings
+  (`:focus-visible`), labels and descriptions wired by FormField, `prefers-reduced-motion`
+  honoured globally (Recharts animations follow it too), and a skip link in the shell.
+
+**Forms**: `useZodForm(schema, { defaultValues })` (react-hook-form + zodResolver). Submit with
+`form.submit(async (values) => mutation.mutateAsync(values))`. A thrown ApiClientError puts 422
+field errors on their fields (dotted paths such as `entries.2.marksObtained` work; the first one
+is focused) and everything else in `form.formError` (show it in `<Alert tone="error">`). The
+logic is in `lib/serverErrors.js`.
+
+- **Client schemas use `zod/mini`** (`import * as z from 'zod/mini'`, `.check(z.minLength(…))`):
+  full `zod` would add ~18 KB gzip to the login page.
+- For controlled inputs (DatePicker, RadioGroup), put the FormField **inside**
+  `<Controller render>`, so it wires the real input.
+
+**Charts** (`components/charts`): TrendLineChart (daily %, threshold line), ComparisonBarChart
+(horizontal bars with their values), CalendarHeatmap (CSS grid, an icon per day). Each renders
+inside `ChartFigure`: a written summary (`summaries.js`, also the accessible name), a "Show the
+numbers" table, and an empty state. Import charts only from lazy pages, so Recharts never loads
+on the login route.
+
+**App shell** (`layouts/DashboardLayout` + `components/layout`)
+
+- A collapsible sidebar from lg (the state is kept in localStorage).
+- Below lg, a bottom nav with the role's `primary` NAV_ITEMS (at most 4) plus "More", a sheet
+  with the other items, change password and log out.
+- A light header: today's Dhaka date, name and role (phones: whose account this is, because
+  siblings share a phone), the bell and log out. Safe-area insets throughout.
+- Page titles are the page's own `<h1>` (PageHeader), not repeated in the header.
+
+**Styleguide**: `/styleguide`, only when `import.meta.env.DEV` (the route and its chunk are
+dropped from production builds). Add every new component and state there, with Bangla text.
+
+**Budget** (production, gzip): `/login` loads ~168 KB of JS (entry 142, zod/mini +
+react-hook-form 19, icons 6.5), 9 KB of CSS, the Outfit Latin font (32 KB) and the logo (26 KB;
+67 KB at 2x). After adding dependencies, check that the login route still loads no chart or
+feature code (`npx vite build` output).
 
 ## Roles & access rules
 
@@ -783,6 +891,9 @@ All routes use `authenticate` + `authorize('admin')` and live in `routes/user.ro
   `notices-dashboards.test.js`. `apiAs(user)` has `get/post/patch/put/delete`.
 - When checking notifications, filter by type, title or `data`, not by position; the order
   documents come back in isn't guaranteed.
+- **Client** (`client/src/__tests__`, `npm test -w client`): pure logic in a node environment
+  (statuses, server-error mapping, dates, chart summaries, schemas, pagination). Components are
+  checked in the browser via `/styleguide`.
 - Socket tests (`realtime.test.js`) run `initRealtime` on a random port and connect with
   `socket.io-client` using `transports: ['websocket']`.
 
@@ -798,4 +909,6 @@ All routes use `authenticate` + `authorize('admin')` and live in `routes/user.ro
 - Don't add a protected route without `authenticate` + `authorize`, plus an ownership guard when
   it is scoped to a class-section or a student.
 - Don't change a schema without a migration.
+- Don't show a status by colour alone (use `config/statuses.js`), put the full logo on a dark
+  surface, use Cerise for success, or import full `zod` or chart components on the login path.
 - Don't emit sockets or send emails inside a transaction; queue them in the outbox.

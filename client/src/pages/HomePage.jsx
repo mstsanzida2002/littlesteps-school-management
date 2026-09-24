@@ -13,23 +13,25 @@ export default function HomePage() {
         description="Attendance, results, meetings and notices for our nursery school."
       />
 
-      <section className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
+      <section className="rounded-card border border-line bg-surface p-5 shadow-card">
         <h2 className="mb-3 text-lg font-bold">System status</h2>
-        {isPending && <p className="text-slate-500">Checking API…</p>}
-        {isError && <p className="font-semibold text-absent">API unreachable: {error.message}</p>}
+        {isPending && <p className="text-muted">Checking API…</p>}
+        {isError && (
+          <p className="font-semibold text-absent-ink">API unreachable: {error.message}</p>
+        )}
         {data && (
           <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1">
-            <dt className="text-slate-500">API</dt>
-            <dd className="font-semibold text-present">{data.status}</dd>
-            <dt className="text-slate-500">Database</dt>
+            <dt className="text-muted">API</dt>
+            <dd className="font-semibold text-present-ink">{data.status}</dd>
+            <dt className="text-muted">Database</dt>
             <dd
-              className={`font-semibold ${data.database === 'connected' ? 'text-present' : 'text-late'}`}
+              className={`font-semibold ${data.database === 'connected' ? 'text-present-ink' : 'text-late-ink'}`}
             >
               {data.database}
             </dd>
-            <dt className="text-slate-500">Environment</dt>
+            <dt className="text-muted">Environment</dt>
             <dd>{data.environment}</dd>
-            <dt className="text-slate-500">Checked</dt>
+            <dt className="text-muted">Checked</dt>
             <dd>{formatDateTime(data.timestamp)}</dd>
           </dl>
         )}

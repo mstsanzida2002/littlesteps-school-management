@@ -1,18 +1,64 @@
 import { Suspense, useState } from 'react';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router';
+import { Outlet, useLocation, useNavigate } from 'react-router';
 
-import { Spinner } from '../components/ui/Spinner.jsx';
-import { APP_NAME, NAV_ITEMS, ROUTES } from '../config/constants.js';
+import { AppHeader } from '../components/layout/AppHeader.jsx';
+import { BottomNav } from '../components/layout/BottomNav.jsx';
+import { MoreSheet } from '../components/layout/MoreSheet.jsx';
+import { activeNavItem } from '../components/layout/navMatch.js';
+import { Sidebar } from '../components/layout/Sidebar.jsx';
+import { Skeleton, SkeletonCard } from '../components/ui/Skeleton.jsx';
+import { NAV_ITEMS, ROLE_HOME, ROUTES } from '../config/constants.js';
 import { useAuth } from '../features/auth/hooks/useAuth.js';
-import { NotificationBell } from '../features/notifications/components/NotificationBell.jsx';
 
-/** Shared shell for admin / teacher / student areas. Sidebar on desktop, drawer on mobile. */
+const COLLAPSED_KEY = 'littlesteps.sidebar.collapsed';
+
+// A per-device preference only; storage may be unavailable (private mode), so never required.
+function readCollapsed() {
+  try {
+    return window.localStorage.getItem(COLLAPSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function PageSkeleton() {
+  return (
+    <div aria-busy="true" aria-label="Loading page" className="flex flex-col gap-4">
+      <Skeleton className="h-8 w-56" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Shell for the admin / teacher / student areas: collapsible sidebar on desktop, bottom
+ * navigation plus a "More" sheet on phones, and a light header with the bell and account.
+ */
 export default function DashboardLayout({ role }) {
-  const [open, setOpen] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
   const items = NAV_ITEMS[role] ?? [];
+  const homeTo = ROLE_HOME[role];
+  const active = activeNavItem(items, pathname);
+
+  const toggleSidebar = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    try {
+      window.localStorage.setItem(COLLAPSED_KEY, next ? '1' : '0');
+    } catch {
+      // Not saved; the sidebar still toggles for this visit.
+    }
+  };
 
   const onLogout = async () => {
     setLoggingOut(true);
@@ -22,95 +68,47 @@ export default function DashboardLayout({ role }) {
 
   return (
     <div className="min-h-dvh lg:flex">
-      <aside
-        className={`fixed inset-y-0 left-0 z-30 w-64 transform border-r border-slate-200 bg-white transition-transform lg:static lg:translate-x-0 ${
-          open ? 'translate-x-0' : '-translate-x-full'
-        }`}
+      <a
+        href="#main"
+        className="sr-only z-50 rounded-control bg-brand-800 px-4 py-3 font-semibold text-white focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
       >
-        <div className="flex h-16 items-center px-5">
-          <Link to={ROUTES.HOME} className="text-xl font-extrabold text-brand-700">
-            {APP_NAME}
-          </Link>
-        </div>
-        <p className="px-5 pb-2 text-xs font-bold tracking-wider text-slate-400 uppercase">
-          {role}
-        </p>
-        <nav className="flex flex-col gap-1 px-3">
-          {items.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              onClick={() => setOpen(false)}
-              className={({ isActive }) =>
-                `rounded-lg px-3 py-2.5 font-semibold ${
-                  isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100'
-                }`
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-      </aside>
+        Skip to main content
+      </a>
 
-      {open && (
-        <button
-          type="button"
-          aria-label="Close menu"
-          className="fixed inset-0 z-20 bg-slate-900/30 lg:hidden"
-          onClick={() => setOpen(false)}
-        />
-      )}
+      <Sidebar items={items} homeTo={homeTo} collapsed={collapsed} onToggle={toggleSidebar} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 flex h-16 items-center gap-3 border-b border-slate-200 bg-white px-4">
-          <button
-            type="button"
-            className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
-            aria-label="Open menu"
-            onClick={() => setOpen(true)}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              className="size-6"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
-            </svg>
-          </button>
-          <div className="ml-auto flex items-center gap-3">
-            <NotificationBell />
-            {user && (
-              <div className="text-right leading-tight">
-                <p className="font-bold text-slate-800">{user.name}</p>
-                <p className="text-sm text-slate-500 capitalize">{user.role}</p>
-              </div>
-            )}
-            <Link
-              to={ROUTES.CHANGE_PASSWORD}
-              className="hidden rounded-lg px-3 py-2 font-semibold text-slate-600 hover:bg-slate-100 sm:block"
-            >
-              Change password
-            </Link>
-            <button
-              type="button"
-              onClick={onLogout}
-              disabled={loggingOut}
-              className="rounded-lg border border-slate-300 px-3 py-2 font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
-            >
-              {loggingOut ? 'Logging out…' : 'Log out'}
-            </button>
-          </div>
-        </header>
-        <main className="flex-1 p-4 sm:p-6">
-          <Suspense fallback={<Spinner />}>
+        <AppHeader
+          user={user}
+          homeTo={homeTo}
+          onOpenAccount={() => setMoreOpen(true)}
+          onLogout={onLogout}
+          loggingOut={loggingOut}
+        />
+        <main
+          id="main"
+          tabIndex={-1}
+          className="mx-auto w-full max-w-6xl flex-1 px-4 pt-5 pb-[calc(6rem+env(safe-area-inset-bottom))] focus:outline-none sm:px-6 lg:px-8 lg:pb-10"
+        >
+          <Suspense fallback={<PageSkeleton />}>
             <Outlet />
           </Suspense>
         </main>
       </div>
+
+      <BottomNav
+        items={items}
+        onMore={() => setMoreOpen(true)}
+        moreActive={moreOpen || Boolean(active && !active.primary)}
+      />
+      <MoreSheet
+        open={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        items={items}
+        user={user}
+        onLogout={onLogout}
+        loggingOut={loggingOut}
+      />
     </div>
   );
 }
