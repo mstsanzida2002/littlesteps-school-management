@@ -51,9 +51,8 @@ export default function DashboardLayout({ role }) {
   const [loggingOut, setLoggingOut] = useState(false);
   // Pushed notifications refresh the data they are about (dashboards stay live).
   useRealtimeInvalidation();
-  // On the home page, fetch its data while the page's code downloads (slow networks). The
-  // admin home doesn't read the dashboard yet, so it is left out.
-  usePrefetchDashboard(role, role !== ROLES.ADMIN && pathname === ROLE_HOME[role]);
+  // On the home page, fetch its data while the page's code downloads (slow networks).
+  usePrefetchDashboard(role, pathname === ROLE_HOME[role]);
 
   const items = NAV_ITEMS[role] ?? [];
   const homeTo = ROLE_HOME[role];

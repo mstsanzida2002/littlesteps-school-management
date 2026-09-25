@@ -9,14 +9,14 @@ _brief_ (requirements + the structure a full IEEE-830 SRS should follow), not th
 
 ## Status
 
-The whole server side of the SRS is done; the UIs are next:
+Every SRS module is done end to end (server + UI):
 
 - The server boots and `/api/health` works; the client shell, routing and data layer are in place.
 - All Mongoose models exist with tests, and a dev seed script is available.
 - **Auth (FR-AUTH-01…06)** is complete on server and client, including the RBAC and ownership
   guards.
-- **Admin module** (FR-ADM-01…06, 10, 11) is done on the server: users, registrations, academic
-  structure, teacher assignments, settings and the audit log. The admin UI is not built yet.
+- **Admin module** (FR-ADM-01…06, 10, 11) is done end to end: users, registrations, academic
+  structure, teacher assignments, settings and the audit log. See "Admin screens" below.
 - **Attendance** (FR-TCH-03…07, SRS 3.6), the attendance override (FR-ADM-09) and
   **notifications** (FR-NOT-01…05: in-app, Socket.io, optional email) are done on the server.
   The client has the notification bell with a live unread count.
@@ -32,9 +32,14 @@ The whole server side of the SRS is done; the UIs are next:
 - **Guardian (student) UI** is done: home, attendance calendar, results, meetings with replies
   and "Add to calendar", notices, profile, "Switch child", and the web app manifest. See
   "Guardian screens" below.
+- **Admin UI** is done: dashboard, users (multi-step student form, temp-password login slip,
+  suspend/reactivate/reset/delete), approvals, academic structure, teacher assignments
+  (by-teacher/by-class/timetable views), settings (grading scale editor, attendance rules),
+  attendance override, results/meetings/notices (the teacher screens, role-aware), and the audit
+  log. See "Admin screens" below.
+- **Real-time beyond notifications:** a throttled `data:changed` event and `session:ended` (with
+  a reason) — see "Real-time (Socket.io) and email".
 - **E2E suite** (Playwright, `npm run e2e`) runs against an in-memory database. See "E2E suite".
-- Not yet built: the admin UI (its nav items show a "coming soon" page, except notices and
-  notifications, which work for every role).
 
 ## Stack
 
@@ -96,6 +101,7 @@ npm run e2e:perf       # guardian home page on slow 3G (production build, own AP
 npm run lint           # ESLint both apps   (lint:fix to autofix)
 npm run format         # Prettier write     (format:check in CI)
 npm run build          # client production build
+npm run audit:bundle -w client  # confirms /login and /student load no admin/teacher code or charts
 npm run seed -- --reset   # wipe + reseed the dev database (see "Databases & seed")
 npm run migrate           # apply pending migrations (-- --status to list them)
 ```
@@ -120,6 +126,13 @@ Env: copy `server/.env.example` → `server/.env`, `client/.env.example` → `cl
     4 class teachers (40 assignments, Sun–Thu timetable: section A 08:00, section B 10:45), 40
     students with guardians, and whole-day attendance for the last 30 calendar days on school
     days only. Today is left unmarked, and 4 students are deliberately below 75%.
+  - **Absence alert notifications** for the last `ABSENCE_ALERT_DAYS` (7) marked school days,
+    grouped per student-day (`absenceNotificationFields` in `attendanceAlerts.service.js`); the
+    newest two days are unread, so the notification bell and dashboards have live data out of
+    the box.
+  - **4 pending registrations** (`PENDING_REGISTRATIONS` in `seedData.js`: rahim.uddin and
+    sumaiya.rahman for KG-2, ishita.paul for Playgroup, tanjim.hasan for Nursery), so the
+    Approvals screen isn't empty on a fresh seed.
   - Also creates demo content (`seed/demoContent.js`) for every class-section:
     - a **published** English class test (marks, a few absent) and a published Drawing
       portfolio (remarks);
@@ -317,10 +330,12 @@ stack? }`. Produced solely by `middleware/errorHandler.js`; stack only in dev fo
   toasts all use it. Adding a server error code means adding its message here.
 - **Live updates:** the shell mounts `useRealtimeInvalidation`: every pushed notification
   invalidates the query roots it is about (`lib/realtimeInvalidation.js`: absence → attendance,
-  results, meetings, notices) plus every dashboard. Query keys start with those roots
+  results, meetings, notices) plus every dashboard. It also listens for the server's
+  `data:changed` event (`keysForDataChange`, batched 250 ms) so admins and assigned teachers see
+  other people's edits (a timetable change, a published test) without a notification of their
+  own — see "Real-time (Socket.io) and email". Query keys start with those roots
   (`['attendance', …]`, `['results', …]`, `['meetings', …]`, `['notices', …]`,
-  `['dashboard', role]`). Mutations invalidate their root and `['dashboard']`. There is no
-  separate "data changed" socket event yet.
+  `['dashboard', role]`). Mutations invalidate their root and `['dashboard']`.
 - **Loading / error / empty:** wrap queries in `<QueryState query loading>` (skeleton, then
   ErrorState with "Try again"); every list has an EmptyState.
 - **Unsaved work:** `useUnsavedChanges(isDirty)` → `{ blocker, allowNavigation }`; render
@@ -414,15 +429,63 @@ The account belongs to the child but is used by a parent or guardian, usually on
 - **Home screen:** `public/manifest.webmanifest` (start `/student`, icons from the footprint mark:
   `icon-192/512.png`, `icon-maskable-512.png`). No service worker, so no offline mode in v1.
 - **Slow networks** (`npm run e2e:perf`, Chrome's "Slow 3G": 2 s round trips, 400 kbit/s):
-  - `index.html` paints the logo before any script arrives; on `/student`, `main.jsx` starts
-    downloading the home page's code during the session check, and the shell starts the
-    dashboard request as the page's code loads (`usePrefetchDashboard`).
+  - `index.html` has an inlined `<style>` **static app-shell skeleton** (sidebar, header, 3
+    cards, bottom nav — a boot splash on `/`, `/login`, `/change-password`, the full shell
+    elsewhere, chosen by an inline script setting `data-boot` before any JS loads) so the first
+    paint shows real layout, not a blank page. `AppShellSkeleton.jsx` is the React replica shown
+    while the session check runs. On `/student`, `main.jsx` starts downloading the home page's
+    code during the session check, and the shell starts the dashboard request as the page's code
+    loads (`usePrefetchDashboard`).
   - Guardian pages never load Recharts (`MonthBars` is plain CSS). Vercel serves `/assets`
     immutable (`vercel.json`), so a repeat visit downloads no JavaScript.
-  - Measured (HTTP/2, first paint / skeleton / content): first visit 5.0 / 10.8 / 12.7 s, repeat
-    visit 2.1 / 4.6 / 6.5 s. A repeat visit is near the floor: the page, the session check and
-    the data are one round trip each. The test asserts budgets with ~30% headroom and exactly one
-    refresh, one dashboard and at most one unread-count request.
+  - Measured (HTTP/2, first paint / skeleton / content): cold (empty cache) 5.0–5.2 / 10.8–11.1 /
+    12.7–13.0 s, warm (repeat visit) 2.1 / 4.5–4.6 / 6.5–6.9 s. A repeat visit is near the floor:
+    the page, the session check and the data are one round trip each. The test asserts budgets
+    with ~30% headroom and exactly one refresh, one dashboard and at most one unread-count
+    request.
+
+## Admin screens (FR-ADM-01…06, 10, 11)
+
+| Route (`/admin/…`)                                    | Screen                                                                                                                     |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| (index)                                               | Dashboard: approvals, counts, 30-day attendance, below-threshold students, classes compared, upcoming meetings, audit feed |
+| `users`, `users/new`, `users/:id`, `users/:id/edit`   | List (filters), the student/teacher/admin create form, account detail, edit                                                |
+| `registrations`                                       | Approvals: waiting / rejected tabs, approve (class, section, roll, DOB) or reject (reason)                                 |
+| `classes?tab=classes\|sections\|subjects\|years`      | Academic structure CRUD, blocked-delete counts, typed school-year switch confirmation                                      |
+| `assignments?view=teacher\|class\|timetable`          | Teacher assignments: by-teacher/by-class lists, a weekly timetable grid, inline clash errors                               |
+| `settings`                                            | Grading scale editor (live 0–100 bar) and attendance rules (threshold, backdate, off days)                                 |
+| `attendance`                                          | Attendance override: the teacher's day-records view with an "Admin override" reason                                        |
+| `results`, `results/new`, `…/:id/edit`, `results/:id` | The teacher's assessment/result-entry screens, reused role-aware                                                           |
+| `meetings`, `meetings/new`, `…/:id`, `…/:id/edit`     | The teacher's meeting screens, plus `all`/`none` (staff-only) targets and a teacher picker                                 |
+| `notices`, `notices/new`, `…/:id/edit`                | Notices with a live guardian-facing preview                                                                                |
+| `audit-log`                                           | Every change, filterable, with a before/after drawer                                                                       |
+| `notices`, `notifications`                            | Shared with every role                                                                                                     |
+
+- **Role-aware shared pages:** `features/school/hooks/useScope.js` gives `useIsAdmin()`,
+  `useRolePaths()` (teacher or admin path builders) and `useClassSectionScope()` (a
+  teacher-assignments-shaped scope built from all classes/sections/subjects for admins). The
+  results, meetings and attendance-records screens are the teacher's components, switched by
+  these hooks — there's one result-entry page, one meeting form, etc., not a duplicate per role.
+- **New student:** a 4-step form (child → class/roll → guardian → account), `mode: 'onChange'`
+  validation, `next-roll` suggestion, a generated temporary password
+  (`utils/tempPassword.js`), and a **bilingual (English/Bangla) printable login slip**
+  (`features/admin/components/LoginSlip.jsx`): the child's name, class, username and temporary
+  password, shown once. The Bangla text is in `features/admin/text/en.js` (`slip`), rendered in
+  Hind Siliguri; printing uses a `.print-slip` portal and `body.printing-slip` in `index.css` to
+  hide everything else.
+- **Suspend / reactivate / reset / delete:** suspend and password reset take an optional reason
+  and end the user's sessions live (`session:ended`, see below); delete with history (attendance,
+  results, assignments…) returns 409 `USER_HAS_HISTORY` and the UI offers "Suspend instead".
+- **Teacher assignments:** `ScheduleEditor.jsx` shows one row per slot (day, start–end, delete);
+  server clash errors (`details.clashes`) are mapped back under the clashing slot. The timetable
+  view is a read-only weekly grid per class-section.
+- **Settings:** `gradingScale.js` (`scaleBands`, `validateScale`) drives a live 0–100% bar plus
+  the threshold/GPA table; the same validation rules as the server (unique grades, 0 at the
+  bottom, GPA non-increasing) are checked client-side before saving.
+- **Audit log:** `auditLabels.js` gives every action a plain label (`ACTION_LABELS`) and flags
+  overrides/suspends/deletes as "Critical" (`isCritical`); `changeRows` turns
+  `{ before, after }` into a readable table, flattening nested objects to "Field: value" lines,
+  formatting ISO dates as `YYYY-MM-DD`, and dropping opaque `*Id` references.
 
 ## Design system (direction D "Guava")
 
@@ -953,11 +1016,35 @@ refreshIpMax } })`.
   - **Handshake:** `auth.token` must be an access token that passes the same checks as HTTP
     (`userFromAccessToken`: signature, expiry, active, `tokenVersion`). Users with
     `mustChangePassword` are rejected.
-  - Each socket joins `user:<id>`.
-  - **Events:** `notification:new`, `notification:updated`, `notifications:unread-count`.
+  - Each socket joins `user:<id>` and `role:<role>` (`roleRoom`).
+  - **Events:** `notification:new`, `notification:updated`, `notifications:unread-count`,
+    `data:changed`, `session:ended`.
+  - **`data:changed`** (`src/realtime/dataChanged.js`, `notifyDataChanged`): tells clients
+    _something in a scope changed_, with ids only (no document contents), so admins and assigned
+    teachers refresh without a notification of their own.
+    - Scopes (`DATA_SCOPES`): `users`, `registrations`, `structure`, `assignments`, `settings`,
+      `attendance`, `results`, `meetings`, `notices`. Recipients: `role:admin` always;
+      `role:teacher` for `settings`/`structure`/`assignments`; the assigned teachers for
+      `attendance`/`results` (from the scope's `classId`/`sectionId`); plus explicit `userIds`.
+    - Routed generically for admin CRUD by `middleware/dataChanged.js`
+      (`signalsDataChange(scope)`: a `res.on('finish')` hook for non-GET requests under 400),
+      mounted on `/users`, `/classes`, `/sections`, `/subjects`, `/sessions`,
+      `/teacher-assignments`, `/settings`, `/notices` and `auth/register`. Attendance, results
+      and meetings queue it themselves (`queueDataChanged` in the outbox, alongside
+      `attendance.mark`/edit, `results.service`, `meeting.service`) since they need the
+      class-section, not just "an admin route ran".
+    - **Throttled**: at most one emit per scope key per `THROTTLE_MS` (2 s), trailing changes
+      merged (ids unioned) and flushed after the window; a periodic sweep drops idle keys.
+    - Client: `lib/realtimeInvalidation.js` → `keysForDataChange(change)` maps a scope to query
+      keys; `useRealtimeInvalidation` batches invalidations every 250 ms.
+  - **`session:ended`** (`{ reason }`, `ANNOUNCED_REASONS`: `suspended`, `admin_reset`): emitted
+    150 ms before the forced disconnect, so the tab can show why before the socket drops. The
+    client (`features/auth/session.js`) shows it on the next `/login` (`sessionEnded` text in
+    `features/auth/text/en.js`).
   - **Disconnects:**
     - at access-token expiry;
-    - all of a user's sockets on `invalidateUserSessions` (suspension, password change/reset);
+    - all of a user's sockets on `invalidateUserSessions` (suspension, password change/reset) —
+      announced first if the reason is in `ANNOUNCED_REASONS`;
     - that login's sockets on logout (`sid`).
     - These are wired through `utils/sessionEvents.js`, so token.service doesn't import
       realtime.
@@ -1057,26 +1144,46 @@ refreshIpMax } })`.
   (`fullyParallel: false`; data-changing specs also use `mode: 'serial'`). Every spec that
   changes data owns different people, so they never collide:
 
-  | Spec                                              | Owns (changes)                                                 |
-  | ------------------------------------------------- | -------------------------------------------------------------- |
-  | `attendance.spec.js`                              | farhana.akter, Playgroup-A/B attendance on the unmarked day    |
-  | `results.spec.js`                                 | tahmina.rahman, the KG-1-A draft Math test                     |
-  | `meetings.spec.js`                                | shirin.akhter, a new KG-2-A meeting                            |
-  | `realtime.spec.js`                                | admin override of kg2-b-02's attendance                        |
-  | `notifications.spec.js`                           | nur-b-01's notifications (read state)                          |
-  | `password-change.spec.js`                         | a new user it creates (`e2e.newteacher`)                       |
-  | `student-attendance.spec.js`                      | nasrin.sultana marking Nursery-A on the unmarked day; nur-a-02 |
-  | `student-results.spec.js`                         | the KG-1-B draft Math test (the admin publishes it); kg1-b-01  |
-  | `student-meetings.spec.js`                        | meetings the admin creates for nur-b-03 only                   |
-  | `student-screens.spec.js`                         | a new Nursery-B student it creates (`e2e.newchild`)            |
-  | `auth`, `a11y`, `switch-child`, `student-privacy` | read-only (sessions, this browser's storage)                   |
+  | Spec                                                                         | Owns (changes)                                                                     |
+  | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+  | `attendance.spec.js`                                                         | farhana.akter, Playgroup-A/B attendance on the unmarked day                        |
+  | `results.spec.js`                                                            | tahmina.rahman, the KG-1-A draft Math test                                         |
+  | `meetings.spec.js`                                                           | shirin.akhter, a new KG-2-A meeting                                                |
+  | `realtime.spec.js`                                                           | admin override of kg2-b-02's attendance                                            |
+  | `notifications.spec.js`                                                      | nur-b-01's notifications (read state)                                              |
+  | `password-change.spec.js`                                                    | a new user it creates (`e2e.newteacher`)                                           |
+  | `student-attendance.spec.js`                                                 | nasrin.sultana marking Nursery-A on the unmarked day; nur-a-02                     |
+  | `student-results.spec.js`                                                    | the KG-1-B draft Math test (the admin publishes it); kg1-b-01                      |
+  | `student-meetings.spec.js`                                                   | meetings the admin creates for nur-b-03 only                                       |
+  | `student-screens.spec.js`                                                    | a new Nursery-B student it creates (`e2e.newchild`)                                |
+  | `admin-users.spec.js`                                                        | `e2e.kg2child` (KG-2-B), `e2e.history.teacher`, `e2e.suspended.teacher`            |
+  | `admin-approvals.spec.js`                                                    | the seeded registrations rahim.uddin (approved) and sumaiya.rahman (rejected)      |
+  | `admin-assignments.spec.js`                                                  | `e2e.clash.teacher` (the clashing timetable is never saved)                        |
+  | `admin-structure.spec.js`                                                    | the school year "2098" (created and deleted; never confirms a switch)              |
+  | `admin-settings.spec.js`                                                     | read-only (validation only; no real save)                                          |
+  | `admin-attendance.spec.js`                                                   | kg2-b-03's (Afia Ibnat) attendance, one school day past the teacher backdate limit |
+  | `admin-content.spec.js`                                                      | a staff-only meeting inviting nasrin.sultana; a teachers-only notice               |
+  | `admin-screens.spec.js` (project `screens`)                                  | a KG-2-B student per width (`e2e.screens.<width>`), an unused school year 2099     |
+  | `admin-mutations.spec.js` (project `admin-mutations`, after everything else) | the real grading scale, off days and active school year (global — see below)       |
+  | `auth`, `a11y`, `switch-child`, `student-privacy`                            | read-only (sessions, this browser's storage)                                       |
 
   A new data-changing spec takes an unused class-section or student and adds a row here.
 
-- `npm run e2e:screens` (project `screens`: `screens.spec.js`, `student-screens.spec.js`):
-  every teacher and guardian screen at 375 and 1280 px, including dialogs, loading, error and
-  empty states, into `docs/design/screens/{teacher,student}/`. It uses `reducedMotion: 'reduce'`
-  so charts are not caught mid-animation.
+- `npm run e2e:screens` (project `screens`: `screens.spec.js`, `student-screens.spec.js`,
+  `admin-screens.spec.js`): every teacher, guardian and admin screen at 375 and 1280 px,
+  including dialogs, loading, error and empty states, into
+  `docs/design/screens/{teacher,student,admin}/`, plus the login slip's print view
+  (`emulateMedia({ media: 'print' })` with `window.print` stubbed, since headless Chrome fires
+  `afterprint` immediately). It uses `reducedMotion: 'reduce'` so charts are not caught
+  mid-animation.
+- **`admin-mutations` project**: a final project with `dependencies: ['e2e']` and `workers: 1`,
+  so it runs alone, after every other spec finishes. It's the only place that actually saves the
+  grading scale, an off day, or switches the active school year — settings every other spec
+  depends on staying put. It checks each change's effect: a test published after a scale change
+  grades with it while an older published test keeps its snapshot; a teacher's day chips drop
+  the newly off day; a teacher sees an empty timetable in the newly active year. Each test builds
+  its own `apiAs(request, …)` client — the `request` fixture from `beforeAll` can't be reused
+  inside a `test()`.
 - `npm run e2e:perf` (`playwright.perf.config.js`, `perf/`): its own API (:5110) and a production
   build served like Vercel by `perf/prodServer.js` (HTTP/2 with a throwaway openssl certificate,
   brotli/gzip, immutable `/assets`, `/api` proxied) on :5176; Chrome's Slow 3G via CDP. Without

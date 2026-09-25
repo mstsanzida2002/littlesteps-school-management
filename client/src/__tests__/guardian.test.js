@@ -192,3 +192,99 @@ describe('remembered accounts (this device)', () => {
     expect(() => rememberAccount({ username: 'x', name: 'y' })).not.toThrow();
   });
 });
+
+describe('temporary passwords', () => {
+  it('meet the policy, avoid look-alikes and differ each time', async () => {
+    const { generateTempPassword, meetsPasswordPolicy } = await import('../utils/tempPassword.js');
+    const seen = new Set();
+    for (let i = 0; i < 200; i += 1) {
+      const p = generateTempPassword();
+      expect(p).toMatch(/^[A-Z][a-z]{3}-\d{4}-[a-z]{4}$/);
+      expect(p).not.toMatch(/[0O1lI]/);
+      expect(meetsPasswordPolicy(p)).toBe(true);
+      seen.add(p);
+    }
+    expect(seen.size).toBe(200);
+    expect(meetsPasswordPolicy('onlyletters')).toBe(false);
+    expect(meetsPasswordPolicy('অআ১২৩৪৫৬')).toBe(true);
+  });
+});
+
+describe('timetable errors next to their slot', () => {
+  it('maps 409 clashes and 422 slot errors to slot indexes', async () => {
+    const { clashErrorsBySlot } = await import('../features/admin/scheduleErrors.js');
+    const slots = [
+      { day: 'sunday', startTime: '08:00', endTime: '08:30' },
+      { day: 'monday', startTime: '10:45', endTime: '11:15' },
+    ];
+    const clash = {
+      details: {
+        clashes: [
+          {
+            slot: { day: 'monday', startTime: '10:45', endTime: '11:15' },
+            message: 'KG-2-B already has Math (Shirin Akhter) on Monday 10:45–11:15.',
+          },
+        ],
+      },
+    };
+    expect(clashErrorsBySlot(clash, slots)).toEqual({
+      1: 'KG-2-B already has Math (Shirin Akhter) on Monday 10:45–11:15.',
+    });
+    const invalid = {
+      errors: [{ field: 'schedule.0.endTime', message: 'endTime must be after startTime' }],
+    };
+    expect(clashErrorsBySlot(invalid, slots)).toEqual({ 0: 'endTime must be after startTime' });
+    expect(clashErrorsBySlot(null, slots)).toEqual({});
+  });
+});
+
+describe('grading scale editor rules (same as the server)', () => {
+  const row = (grade, minPercent, gpa = '') => ({
+    grade,
+    minPercent: String(minPercent),
+    gpa: String(gpa),
+  });
+  it('accepts a full scale in any order and derives each range', async () => {
+    const { scaleBands, validateScale } = await import('../features/admin/gradingScale.js');
+    const rows = [row('B', 50, 3), row('A+', 80, 5), row('A', 70, 4), row('F', 0, 0)];
+    expect(validateScale(rows).valid).toBe(true);
+    expect(scaleBands(rows).map((b) => [b.grade, b.min, b.max])).toEqual([
+      ['A+', 80, 100],
+      ['A', 70, 80],
+      ['B', 50, 70],
+      ['F', 0, 50],
+    ]);
+  });
+  it('flags gaps, overlaps, duplicates and a rising GPA', async () => {
+    const { validateScale } = await import('../features/admin/gradingScale.js');
+    const gap = validateScale([row('A', 80), row('B', 10)]);
+    expect(gap.valid).toBe(false);
+    expect(gap.scale[0]).toMatch(/lowest grade must start at 0%/);
+    const overlap = validateScale([row('A', 50), row('B', 50), row('F', 0)]);
+    expect(overlap.rows[1]).toMatch(/already starts at 50%/);
+    const dup = validateScale([row('A', 60), row('a', 30), row('F', 0)]);
+    expect(dup.rows[1]).toMatch(/appears more than once/);
+    const gpa = validateScale([row('A', 60, 3), row('B', 30, 4), row('F', 0, 0)]);
+    expect(gpa.rows[1]).toMatch(/GPA is higher/);
+    expect(validateScale([row('', 0)]).rows[0]).toBe('Enter a grade');
+    expect(validateScale([row('A', 120), row('F', 0)]).rows[0]).toMatch(/0 to 100/);
+  });
+});
+
+describe('schedule summary', () => {
+  it('groups days that share a time', async () => {
+    const { summarizeSchedule } = await import('../features/admin/scheduleErrors.js');
+    const at = (day, startTime = '08:00', endTime = '08:30') => ({ day, startTime, endTime });
+    expect(
+      summarizeSchedule(['sunday', 'monday', 'tuesday', 'wednesday', 'thursday'].map((d) => at(d))),
+    ).toEqual(['Sun–Thu 08:00–08:30']);
+    expect(
+      summarizeSchedule([
+        at('sunday'),
+        at('tuesday'),
+        at('wednesday'),
+        at('monday', '10:45', '11:15'),
+      ]),
+    ).toEqual(['Sun, Tue, Wed 08:00–08:30', 'Mon 10:45–11:15']);
+  });
+});

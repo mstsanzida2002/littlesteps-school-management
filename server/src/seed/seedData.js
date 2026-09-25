@@ -512,3 +512,48 @@ export const MOTHER_NAMES = [
   'Rehana Parvin',
   'Jesmin Akter',
 ];
+
+/**
+ * Self-registrations waiting for an admin (FR-AUTH-06, FR-ADM-02): the approvals queue has real
+ * data. `requestedClass` is a CLASSES name. Password: PASSWORDS.student.
+ */
+export const PENDING_REGISTRATIONS = [
+  {
+    name: 'Rahim Uddin',
+    username: 'rahim.uddin',
+    gender: 'male',
+    dateOfBirth: '2021-11-03',
+    requestedClass: 'KG-2',
+    guardian: { name: 'Salma Begum', relation: 'mother', phone: '01715000201' },
+    note: 'Moving from Chattogram; starts next month.',
+  },
+  {
+    name: 'Sumaiya Rahman',
+    username: 'sumaiya.rahman',
+    gender: 'female',
+    dateOfBirth: '2021-06-19',
+    requestedClass: 'KG-2',
+    guardian: {
+      name: 'Abdur Rahman',
+      relation: 'father',
+      phone: '01815000202',
+      email: 'abdur.rahman@example.com',
+    },
+  },
+  {
+    name: 'Ishita Paul',
+    username: 'ishita.paul',
+    gender: 'female',
+    dateOfBirth: '2023-02-11',
+    requestedClass: 'Playgroup',
+    guardian: { name: 'Mitali Paul', relation: 'mother', phone: '01915000203' },
+    note: 'Her cousin is in Nursery-A.',
+  },
+  {
+    name: 'Tanjim Hasan',
+    username: 'tanjim.hasan',
+    gender: 'male',
+    requestedClass: 'Nursery',
+    guardian: { name: 'Kamrul Hasan', relation: 'father', phone: '01615000204' },
+  },
+];

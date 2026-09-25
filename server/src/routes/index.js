@@ -9,6 +9,7 @@ import {
   createSubjectRouter,
   createTeacherAssignmentRouter,
 } from './admin.routes.js';
+import { signalsDataChange } from '../middleware/dataChanged.js';
 import { requireDatabase } from '../middleware/requireDatabase.js';
 import { createAttendanceRouter } from './attendance.routes.js';
 import { createAuthRouter } from './auth.routes.js';
@@ -43,13 +44,18 @@ export function createApiRouter({ selfRegistrationEnabled, rateLimits, testRoute
   router.use('/settings/school', createSchoolSettingsRouter());
   router.use('/teacher-assignments/mine', createMyAssignmentsRouter());
 
-  router.use('/users', createUserRouter());
-  router.use('/classes', createClassRouter());
-  router.use('/sections', createSectionRouter());
-  router.use('/subjects', createSubjectRouter());
-  router.use('/sessions', createSessionRouter());
-  router.use('/teacher-assignments', createTeacherAssignmentRouter());
-  router.use('/settings', createSettingsRouter());
+  // Successful writes send "data:changed" (open admin screens and affected teachers refresh).
+  router.use('/users', signalsDataChange('users'), createUserRouter());
+  router.use('/classes', signalsDataChange('structure'), createClassRouter());
+  router.use('/sections', signalsDataChange('structure'), createSectionRouter());
+  router.use('/subjects', signalsDataChange('structure'), createSubjectRouter());
+  router.use('/sessions', signalsDataChange('structure'), createSessionRouter());
+  router.use(
+    '/teacher-assignments',
+    signalsDataChange('assignments'),
+    createTeacherAssignmentRouter(),
+  );
+  router.use('/settings', signalsDataChange('settings'), createSettingsRouter());
   router.use('/audit-logs', createAuditLogRouter());
 
   // Attendance & notifications
@@ -60,7 +66,7 @@ export function createApiRouter({ selfRegistrationEnabled, rateLimits, testRoute
   router.use('/assessments', createAssessmentRouter());
   router.use('/results', createResultRouter());
   router.use('/meetings', createMeetingRouter());
-  router.use('/notices', createNoticeRouter());
+  router.use('/notices', signalsDataChange('notices'), createNoticeRouter());
   router.use('/dashboard', createDashboardRouter());
   router.use('/students', createStudentRouter());
 

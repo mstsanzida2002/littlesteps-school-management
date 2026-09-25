@@ -13,11 +13,10 @@ import { PageHeader } from '../../../components/ui/PageHeader.jsx';
 import { Pagination } from '../../../components/ui/Pagination.jsx';
 import { Select } from '../../../components/ui/Select.jsx';
 import { TabPanel, Tabs } from '../../../components/ui/Tabs.jsx';
-import { teacherPaths } from '../../../config/paths.js';
 import { formatSchoolDate } from '../../../utils/date.js';
 import { classSectionLabel, modeLabel, typeLabel } from '../../results/labels.js';
 import { useAssessments } from '../../results/hooks/useResults.js';
-import { useMyAssignments } from '../../school/hooks/useSchool.js';
+import { useClassSectionScope, useRolePaths } from '../../school/hooks/useScope.js';
 import { classSectionValue } from '../classSection.js';
 
 const TABS = [
@@ -26,14 +25,14 @@ const TABS = [
   { value: 'published', label: 'Published', icon: FileCheck },
 ];
 
-const columns = [
+const columnsFor = (paths) => [
   {
     key: 'name',
     header: 'Assessment',
     sortable: true,
     mobile: 'title',
     cell: (a) => (
-      <Link to={teacherPaths.assessment(a._id)} className="font-semibold hover:underline">
+      <Link to={paths.assessment(a._id)} className="font-semibold hover:underline">
         {a.name}
       </Link>
     ),
@@ -56,7 +55,9 @@ const columns = [
 
 export default function AssessmentsPage() {
   const [params, setParams] = useSearchParams();
-  const mine = useMyAssignments();
+  const paths = useRolePaths();
+  const mine = useClassSectionScope();
+  const columns = columnsFor(paths);
   const status = params.get('status') ?? 'all';
   const page = Number(params.get('page') ?? 1);
   const sort = params.get('sort') ?? '-date';
@@ -89,7 +90,7 @@ export default function AssessmentsPage() {
   );
   const activeFilters = [classId, subjectId].filter(Boolean).length;
   const newButton = (
-    <Link to={teacherPaths.newAssessment()} className={buttonClasses()}>
+    <Link to={paths.newAssessment()} className={buttonClasses()}>
       <Plus aria-hidden="true" className="size-5" />
       New assessment
     </Link>

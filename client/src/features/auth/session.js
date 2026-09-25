@@ -11,7 +11,7 @@
  */
 import { queryClient } from '../../app/queryClient.js';
 import { setRefreshHandler } from '../../lib/axios.js';
-import { setSocketRefreshHandler } from '../../lib/socket.js';
+import { setSocketRefreshHandler, socket } from '../../lib/socket.js';
 import { tokenStore } from '../../lib/tokenStore.js';
 import { authApi } from './api/authApi.js';
 
@@ -56,6 +56,20 @@ tokenStore.subscribe((token) => {
   queryClient.clear();
   if (state.status !== AUTH_STATUS.ANONYMOUS)
     setState({ status: AUTH_STATUS.ANONYMOUS, user: null });
+});
+
+// --- Signed out by the school ----------------------------------------------------
+
+// The server says why just before it ends the sessions (suspension, a password reset by an
+// admin). Sign out here at once and keep the reason for the login page (read, then cleared).
+let endedReason = null;
+export const sessionEndedReason = () => endedReason;
+export function clearSessionEndedReason() {
+  endedReason = null;
+}
+socket.on('session:ended', ({ reason } = {}) => {
+  endedReason = reason ?? null;
+  clearLocalSession();
 });
 
 // --- Cross-tab logout ----------------------------------------------------------

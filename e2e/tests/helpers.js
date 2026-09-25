@@ -82,3 +82,26 @@ export function trackPageErrors(page) {
   page.on('pageerror', (error) => errors.push(error.message));
   return errors;
 }
+
+/**
+ * A teacher account created through the admin API and made ready to use (the forced password
+ * change done through the API too). Returns { user, login: { identifier, password } }.
+ */
+export async function createReadyTeacher(request, { username, name, employeeId }) {
+  const admin = await apiAs(request, USERS.admin);
+  const created = await admin.post('/users', {
+    role: 'teacher',
+    name,
+    username,
+    password: 'Temp2026x',
+    profile: { employeeId },
+  });
+  expect(created.status, `create ${username}`).toBe(201);
+  const first = await apiAs(request, { identifier: username, password: 'Temp2026x' });
+  const changed = await first.patch('/auth/password', {
+    currentPassword: 'Temp2026x',
+    newPassword: 'Ready2026x',
+  });
+  expect(changed.status).toBe(200);
+  return { user: created.body.data, login: { identifier: username, password: 'Ready2026x' } };
+}

@@ -22,7 +22,7 @@ import {
   requireActiveSession,
   requireSectionInClass,
 } from './lookup.service.js';
-import { createOutbox, dispatchOutbox } from './notification.service.js';
+import { createOutbox, dispatchOutbox, queueDataChanged } from './notification.service.js';
 
 const isDuplicateKey = (err) =>
   err?.code === 11000 || err?.writeErrors?.some?.((e) => e.code === 11000);
@@ -202,6 +202,13 @@ export async function markAttendance(actor, body, meta = {}) {
         },
         { session },
       );
+      // Co-teachers and admins looking at this class-section refresh (ids only).
+      queueDataChanged(txOutbox, {
+        scope: 'attendance',
+        classId,
+        sectionId,
+        date: toDateKey(date),
+      });
       return txOutbox;
     });
   } catch (err) {

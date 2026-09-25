@@ -19,7 +19,6 @@ import { Skeleton } from '../../../components/ui/Skeleton.jsx';
 import { Textarea } from '../../../components/ui/Textarea.jsx';
 import { toast } from '../../../components/ui/toast.js';
 import { UnsavedChangesDialog } from '../../../components/ui/UnsavedChangesDialog.jsx';
-import { teacherPaths } from '../../../config/paths.js';
 import { useUnsavedChanges } from '../../../hooks/useUnsavedChanges.js';
 import { useZodForm } from '../../../hooks/useZodForm.js';
 import { schoolDateTimeParts } from '../../../utils/date.js';
@@ -30,7 +29,9 @@ import {
   useUpdateMeeting,
 } from '../../meetings/hooks/useMeetings.js';
 import { DURATIONS, MEETING_TYPES } from '../../meetings/labels.js';
-import { useMyAssignments, useSchoolSettings } from '../../school/hooks/useSchool.js';
+import { useUsers } from '../../admin/hooks/useAdmin.js';
+import { useSchoolSettings } from '../../school/hooks/useSchool.js';
+import { useClassSectionScope, useRolePaths } from '../../school/hooks/useScope.js';
 import { classSectionValue } from '../classSection.js';
 
 const schema = z
@@ -44,11 +45,13 @@ const schema = z
     venue: z.string(),
     onlineLink: z.string(),
     agenda: z.string().check(z.maxLength(2000, 'Keep the agenda under 2000 characters')),
-    target: z.enum(['sections', 'classes', 'students']),
+    // Admins also have 'all' (everyone) and 'none' (staff only: teachers).
+    target: z.enum(['all', 'sections', 'classes', 'students', 'none']),
     sectionIds: z.array(z.string()),
     classIds: z.array(z.string()),
     rosterSection: z.string(),
     studentIds: z.array(z.string()),
+    teacherIds: z.array(z.string()),
   })
   .check(
     z.refine((v) => v.where !== 'venue' || v.venue.trim().length >= 2, {
@@ -70,6 +73,10 @@ const schema = z
     z.refine((v) => v.target !== 'students' || v.studentIds.length > 0, {
       path: ['studentIds'],
       message: 'Choose at least one student',
+    }),
+    z.refine((v) => v.target !== 'none' || v.teacherIds.length > 0, {
+      path: ['teacherIds'],
+      message: 'Choose at least one teacher',
     }),
   );
 
@@ -121,7 +128,26 @@ function StudentPicker({ classSection, value, onChange, error }) {
   );
 }
 
-function MeetingForm({ meeting, assignments, today }) {
+/** Admins may invite teachers too (FR-TCH-14); a staff-only meeting invites teachers only. */
+function TeacherPicker({ value, onChange, error, required }) {
+  const teachers = useUsers({ role: 'teacher', status: 'active', limit: 100, sort: 'name' });
+  return (
+    <QueryState query={teachers} compact loading={<Skeleton className="h-24 rounded-card" />}>
+      {({ data }) => (
+        <CheckboxList
+          legend={required ? 'Teachers' : 'Also invite teachers (optional)'}
+          options={data.map((t) => ({ value: String(t._id), label: t.name }))}
+          value={value}
+          onChange={onChange}
+          error={error}
+        />
+      )}
+    </QueryState>
+  );
+}
+
+function MeetingForm({ meeting, assignments, today, isAdmin }) {
+  const paths = useRolePaths();
   const navigate = useNavigate();
   const create = useCreateMeeting();
   const update = useUpdateMeeting();
@@ -141,9 +167,14 @@ function MeetingForm({ meeting, assignments, today }) {
       venue: meeting?.venue ?? '',
       onlineLink: meeting?.onlineLink ?? '',
       agenda: meeting?.agenda ?? '',
-      target: ['sections', 'classes', 'students'].includes(invite?.target)
+      target: (isAdmin
+        ? ['all', 'sections', 'classes', 'students', 'none']
+        : ['sections', 'classes', 'students']
+      ).includes(invite?.target)
         ? invite.target
-        : 'sections',
+        : isAdmin
+          ? 'all'
+          : 'sections',
       sectionIds: (
         invite?.sectionIds ??
         (classSections.length === 1 ? [String(classSections[0].sectionId)] : [])
@@ -151,6 +182,9 @@ function MeetingForm({ meeting, assignments, today }) {
       classIds: (invite?.classIds ?? []).map(String),
       rosterSection: classSections.length === 1 ? classSectionValue(classSections[0]) : '',
       studentIds: (invite?.studentIds ?? []).map(String),
+      teacherIds: (invite?.teacherIds ?? meeting?.inviteeTeacherIds ?? []).map((t) =>
+        String(t?._id ?? t),
+      ),
     },
   });
   const { errors, isSubmitting, isDirty } = form.formState;
@@ -161,9 +195,18 @@ function MeetingForm({ meeting, assignments, today }) {
   const { blocker, allowNavigation } = useUnsavedChanges(isDirty && !isSubmitting);
 
   const targets = [
+    ...(isAdmin
+      ? [
+          {
+            value: 'all',
+            label: 'Everyone',
+            description: 'Guardians of every student in the school.',
+          },
+        ]
+      : []),
     {
       value: 'sections',
-      label: 'My classes',
+      label: isAdmin ? 'Class sections' : 'My classes',
       description: 'Guardians of every student in the classes you choose.',
     },
     ...(wholeClasses.length
@@ -171,7 +214,9 @@ function MeetingForm({ meeting, assignments, today }) {
           {
             value: 'classes',
             label: 'A whole class',
-            description: 'Both sections, for classes you teach entirely.',
+            description: isAdmin
+              ? 'Every section of the classes you choose.'
+              : 'Both sections, for classes you teach entirely.',
           },
         ]
       : []),
@@ -180,6 +225,15 @@ function MeetingForm({ meeting, assignments, today }) {
       label: 'Chosen students',
       description: 'Only the guardians of the students you pick.',
     },
+    ...(isAdmin
+      ? [
+          {
+            value: 'none',
+            label: 'Staff only',
+            description: 'Teachers only; no guardians are invited.',
+          },
+        ]
+      : []),
   ];
 
   const onSubmit = form.submit(async (v) => {
@@ -196,6 +250,7 @@ function MeetingForm({ meeting, assignments, today }) {
         ...(v.target === 'sections' && { sectionIds: v.sectionIds }),
         ...(v.target === 'classes' && { classIds: v.classIds }),
         ...(v.target === 'students' && { studentIds: v.studentIds }),
+        ...(isAdmin && v.teacherIds.length && { teacherIds: v.teacherIds }),
       },
     };
     const saved = editing
@@ -207,7 +262,7 @@ function MeetingForm({ meeting, assignments, today }) {
         ? 'Meeting updated. Invitees are notified.'
         : 'Meeting created. Guardians are invited.',
     );
-    navigate(teacherPaths.meeting(saved?._id ?? meeting._id), { replace: !editing });
+    navigate(paths.meeting(saved?._id ?? meeting._id), { replace: !editing });
   });
 
   return (
@@ -331,6 +386,20 @@ function MeetingForm({ meeting, assignments, today }) {
               )}
             />
           )}
+          {isAdmin && (
+            <Controller
+              control={form.control}
+              name="teacherIds"
+              render={({ field }) => (
+                <TeacherPicker
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={errors.teacherIds?.message}
+                  required={target === 'none'}
+                />
+              )}
+            />
+          )}
           {target === 'students' && (
             <>
               <FormField label="From class">
@@ -366,7 +435,7 @@ function MeetingForm({ meeting, assignments, today }) {
         )}
         <div className="flex flex-col-reverse gap-2 border-t border-line pt-4 sm:flex-row sm:justify-end md:col-span-2">
           <Link
-            to={editing ? teacherPaths.meeting(meeting._id) : teacherPaths.meetings()}
+            to={editing ? paths.meeting(meeting._id) : paths.meetings()}
             className={buttonClasses({ variant: 'secondary' })}
           >
             Cancel
@@ -382,10 +451,11 @@ function MeetingForm({ meeting, assignments, today }) {
 }
 
 export default function MeetingFormPage() {
+  const paths = useRolePaths();
   const { meetingId } = useParams();
   const editing = Boolean(meetingId);
   const meeting = useMeeting(meetingId);
-  const mine = useMyAssignments();
+  const mine = useClassSectionScope();
   const settings = useSchoolSettings();
   const queries = [mine, settings, ...(editing ? [meeting] : [])];
   const blocking = queries.find((q) => q.isError) ?? queries.find((q) => q.isPending);
@@ -393,7 +463,7 @@ export default function MeetingFormPage() {
   return (
     <>
       <Link
-        to={editing ? teacherPaths.meeting(meetingId) : teacherPaths.meetings()}
+        to={editing ? paths.meeting(meetingId) : paths.meetings()}
         className={buttonClasses({ variant: 'ghost', size: 'sm', className: '-ml-2 mb-2' })}
       >
         <ArrowLeft aria-hidden="true" className="size-4" />
@@ -409,6 +479,7 @@ export default function MeetingFormPage() {
           meeting={editing ? meeting.data : null}
           assignments={mine.data}
           today={settings.data.today}
+          isAdmin={mine.isAdmin}
         />
       )}
     </>

@@ -173,3 +173,30 @@
   min-height: 44px;
   min-width: 44px;
 }
+
+/* Login slip (features/admin/components/LoginSlip.jsx): on screen the printable copy is hidden;
+   while printing it (body.printing-slip) only that copy prints, on white, without the app. */
+.print-slip {
+  display: none;
+}
+@media print {
+  body.printing-slip {
+    background: #fff;
+  }
+  body.printing-slip > *:not(.print-slip) {
+    display: none !important;
+  }
+  body.printing-slip .print-slip {
+    display: block;
+    padding: 12mm;
+  }
+  body.printing-slip .slip-sheet {
+    max-width: none;
+    border-color: #999;
+    box-shadow: none;
+  }
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+}

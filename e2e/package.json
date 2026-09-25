@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "e2e": "playwright test --project=e2e",
+    "e2e": "playwright test --project=e2e --project=admin-mutations",
     "e2e:screens": "playwright test --project=screens",
     "lint": "eslint .",
     "e2e:perf": "playwright test --config playwright.perf.config.js"

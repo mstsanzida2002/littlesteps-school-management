@@ -57,10 +57,10 @@ export const NAV_ITEMS = Object.freeze({
   [ROLES.ADMIN]: [
     { label: 'Dashboard', to: ROUTES.ADMIN, icon: LayoutDashboard, end: true, primary: true },
     { label: 'Users', to: '/admin/users', icon: Users, primary: true },
-    { label: 'Registrations', to: '/admin/registrations', icon: UserPlus },
-    { label: 'Classes', to: '/admin/classes', icon: School },
+    { label: 'Approvals', to: '/admin/registrations', icon: UserPlus, primary: true },
+    { label: 'Classes & years', to: '/admin/classes', icon: School },
     { label: 'Assignments', to: '/admin/assignments', icon: ClipboardList },
-    { label: 'Attendance', to: '/admin/attendance', icon: CalendarCheck, primary: true },
+    { label: 'Attendance', to: '/admin/attendance', icon: CalendarCheck },
     { label: 'Results', to: '/admin/results', icon: Award },
     { label: 'Meetings', to: '/admin/meetings', icon: UsersRound },
     { label: 'Notices', to: '/admin/notices', icon: Megaphone, primary: true },

@@ -31,6 +31,40 @@ export const teacherPaths = {
   notices: () => '/teacher/notices',
 };
 
+/**
+ * The admin area. Shared screens (attendance records, results, meetings) take the same keys as
+ * teacherPaths, so one page works for both roles through useRolePaths().
+ */
+export const adminPaths = {
+  dashboard: () => '/admin',
+  users: ({ role, status, classId, sectionId, search, page } = {}) =>
+    withQuery('/admin/users', { role, status, classId, sectionId, search, page }),
+  newUser: ({ role } = {}) => withQuery('/admin/users/new', { role }),
+  user: (id) => `/admin/users/${id}`,
+  editUser: (id) => `/admin/users/${id}/edit`,
+  approvals: () => '/admin/registrations',
+  structure: ({ tab } = {}) => withQuery('/admin/classes', { tab }),
+  assignments: ({ view, teacherId, classId, sectionId } = {}) =>
+    withQuery('/admin/assignments', { view, teacherId, classId, sectionId }),
+  settings: () => '/admin/settings',
+  auditLog: (params = {}) => withQuery('/admin/audit-log', params),
+  // Shared with teachers (same keys as teacherPaths).
+  attendanceRecords: ({ classId, sectionId, date } = {}) =>
+    withQuery('/admin/attendance', { classId, sectionId, date }),
+  studentAttendance: (studentId) => `/admin/students/${studentId}/attendance`,
+  assessments: ({ status } = {}) => withQuery('/admin/results', { status }),
+  newAssessment: () => '/admin/results/new',
+  assessment: (id) => `/admin/results/${id}`,
+  editAssessment: (id) => `/admin/results/${id}/edit`,
+  meetings: ({ when } = {}) => withQuery('/admin/meetings', { when }),
+  newMeeting: () => '/admin/meetings/new',
+  meeting: (id) => `/admin/meetings/${id}`,
+  editMeeting: (id) => `/admin/meetings/${id}/edit`,
+  notices: () => '/admin/notices',
+  newNotice: () => '/admin/notices/new',
+  editNotice: (id) => `/admin/notices/${id}/edit`,
+};
+
 export const studentPaths = {
   dashboard: () => '/student',
   attendance: ({ month, day } = {}) =>

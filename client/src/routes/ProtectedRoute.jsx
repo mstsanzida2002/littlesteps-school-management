@@ -1,6 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router';
 
-import { FullPageLoader } from '../components/ui/FullPageLoader.jsx';
+import { AppShellSkeleton } from '../components/layout/AppShellSkeleton.jsx';
 import { ROUTES } from '../config/constants.js';
 import { useAuth } from '../features/auth/hooks/useAuth.js';
 import { AUTH_STATUS } from '../features/auth/session.js';
@@ -13,7 +13,8 @@ export default function ProtectedRoute() {
   const { status, user } = useAuth();
   const location = useLocation();
 
-  if (status === AUTH_STATUS.LOADING) return <FullPageLoader />;
+  // Same shape as index.html's placeholder, so the page doesn't jump while the session loads.
+  if (status === AUTH_STATUS.LOADING) return <AppShellSkeleton />;
   if (status !== AUTH_STATUS.AUTHENTICATED) {
     return <Navigate to={ROUTES.LOGIN} replace state={{ from: location }} />;
   }

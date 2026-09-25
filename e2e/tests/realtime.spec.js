@@ -2,7 +2,7 @@
 // Owns KG-2-B (a student's attendance is overridden and restored by the admin).
 import { expect, test } from '@playwright/test';
 
-import { apiAs, login, studentLogin, USERS } from './helpers.js';
+import { apiAs, dayLabel, login, studentLogin, USERS } from './helpers.js';
 
 const STUDENT = 'kg2-b-02';
 
@@ -18,7 +18,11 @@ test('an admin correction reaches the guardian live', async ({ page, request }) 
   const bell = page.getByTestId('unread-count');
   await expect(page.locator('#main h1')).toHaveText('Notifications');
   const before = Number((await bell.count()) ? await bell.textContent() : 0);
-  const items = page.getByRole('button', { name: /Absent on/ });
+  // The seed has absence alerts for recent days; only this day's alert is the one to watch.
+  await expect(
+    page.getByRole('button', { name: /Notice:|Absent on|Meeting/ }).first(),
+  ).toBeVisible();
+  const items = page.getByRole('button', { name: new RegExp(`Absent on ${dayLabel(day)}`) });
   await expect(items).toHaveCount(0);
 
   const override = await admin.patch(`/attendance/students/${guardian.me._id}/days/${day}`, {

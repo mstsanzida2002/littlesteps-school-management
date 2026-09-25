@@ -24,13 +24,13 @@ import { QueryState } from '../../../components/ui/QueryState.jsx';
 import { Skeleton, SkeletonCard } from '../../../components/ui/Skeleton.jsx';
 import { toast } from '../../../components/ui/toast.js';
 import { getStatus } from '../../../config/statuses.js';
-import { teacherPaths } from '../../../config/paths.js';
 import { errorMessage } from '../../../lib/errorMessages.js';
 import { cn } from '../../../utils/cn.js';
 import { formatDateTime } from '../../../utils/date.js';
 import { plural } from '../../../utils/format.js';
 import { TONE_SOFT } from '../../../components/ui/tones.js';
 import { useAuth } from '../../auth/hooks/useAuth.js';
+import { useIsAdmin, useRolePaths } from '../../school/hooks/useScope.js';
 import {
   useCancelMeeting,
   useMeeting,
@@ -95,6 +95,9 @@ function Responses({ meetingId }) {
 }
 
 export default function MeetingDetailPage() {
+  const paths = useRolePaths();
+  // Admins manage every meeting (FR-ADM-07); teachers only the ones they organise.
+  const isAdmin = useIsAdmin();
   const { meetingId } = useParams();
   const { user } = useAuth();
   const meeting = useMeeting(meetingId);
@@ -115,7 +118,7 @@ export default function MeetingDetailPage() {
   return (
     <>
       <Link
-        to={teacherPaths.meetings()}
+        to={paths.meetings()}
         className={buttonClasses({ variant: 'ghost', size: 'sm', className: '-ml-2 mb-2' })}
       >
         <ArrowLeft aria-hidden="true" className="size-4" />
@@ -133,7 +136,8 @@ export default function MeetingDetailPage() {
         {(m) => {
           const state = meetingState(m);
           const organiser = String(m.organizerId?._id) === String(user?._id ?? user?.id);
-          const canChange = organiser && state === 'upcoming';
+          const manager = organiser || isAdmin;
+          const canChange = manager && state === 'upcoming';
           const Where = m.onlineLink ? Video : MapPin;
           return (
             <>
@@ -146,7 +150,7 @@ export default function MeetingDetailPage() {
                     {canChange && (
                       <>
                         <Link
-                          to={teacherPaths.editMeeting(m._id)}
+                          to={paths.editMeeting(m._id)}
                           className={buttonClasses({ variant: 'secondary', size: 'sm' })}
                         >
                           <Pencil aria-hidden="true" className="size-4" />
@@ -229,7 +233,7 @@ export default function MeetingDetailPage() {
                   )}
                 </Card>
                 <Card title="Replies">
-                  {organiser ? (
+                  {manager ? (
                     <Responses meetingId={m._id} />
                   ) : (
                     <EmptyState

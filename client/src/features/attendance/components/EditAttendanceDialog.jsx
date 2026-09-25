@@ -34,11 +34,13 @@ const schema = z.object({
 /**
  * Change one attendance record, or a student's whole day (the teacher's own subjects), with the
  * reason the API requires. BACKDATE_LIMIT and other errors read as in lib/errorMessages.js.
+ * `override` (admins): no backdate limit, a whole day covers every subject, and the change is
+ * labelled and audited as an admin override.
  *
  * target: { kind: 'record', id, status, studentName, subjectName, dayLabel }
  *       | { kind: 'day', studentId, date, status, studentName, dayLabel }
  */
-export function EditAttendanceDialog({ target, onClose }) {
+export function EditAttendanceDialog({ target, onClose, override = false }) {
   const editRecord = useEditAttendanceRecord();
   const editDay = useEditAttendanceDay();
   const form = useZodForm(schema, {
@@ -65,10 +67,18 @@ export function EditAttendanceDialog({ target, onClose }) {
       open={Boolean(target)}
       onClose={onClose}
       dismissible={!isSubmitting}
-      title={target?.kind === 'day' ? 'Change the whole day' : 'Change attendance'}
+      title={
+        override
+          ? target?.kind === 'day'
+            ? 'Override the whole day'
+            : 'Override attendance'
+          : target?.kind === 'day'
+            ? 'Change the whole day'
+            : 'Change attendance'
+      }
       description={
         target &&
-        `${target.studentName} · ${target.kind === 'day' ? 'all your subjects' : target.subjectName} · ${target.dayLabel}`
+        `${target.studentName} · ${target.kind === 'day' ? (override ? 'all subjects' : 'all your subjects') : target.subjectName} · ${target.dayLabel}`
       }
       footer={
         <>
@@ -82,6 +92,12 @@ export function EditAttendanceDialog({ target, onClose }) {
       }
     >
       <form id="edit-attendance" onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
+        {override && (
+          <Alert tone="warning" title="Admin override">
+            Saved as an override in the audit log, with your reason. The guardian is told about
+            corrections.
+          </Alert>
+        )}
         <Controller
           control={form.control}
           name="status"
@@ -97,7 +113,7 @@ export function EditAttendanceDialog({ target, onClose }) {
           )}
         />
         <FormField
-          label="Reason for the change"
+          label={override ? 'Reason for the override' : 'Reason for the change'}
           required
           hint="Saved in the history. The guardian is told about corrections."
           error={errors.reason?.message}

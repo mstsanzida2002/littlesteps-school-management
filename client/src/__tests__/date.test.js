@@ -67,3 +67,11 @@ describe('meeting times in Dhaka', () => {
     expect(formatSchoolTime('2026-09-27T05:00:00.000Z')).toBe('11:00 am');
   });
 });
+
+describe('endOfSchoolDay', () => {
+  it('is the next Dhaka midnight, in UTC', async () => {
+    const { endOfSchoolDay } = await import('../utils/date.js');
+    expect(endOfSchoolDay('2026-10-01')).toBe('2026-10-01T18:00:00.000Z');
+    expect(endOfSchoolDay('2026-12-31')).toBe('2026-12-31T18:00:00.000Z');
+  });
+});

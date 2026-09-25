@@ -15,7 +15,6 @@ import { QueryState } from '../../../components/ui/QueryState.jsx';
 import { Skeleton } from '../../../components/ui/Skeleton.jsx';
 import { toast } from '../../../components/ui/toast.js';
 import { UnsavedChangesDialog } from '../../../components/ui/UnsavedChangesDialog.jsx';
-import { teacherPaths } from '../../../config/paths.js';
 import { useIsDesktop } from '../../../hooks/useMediaQuery.js';
 import { useUnsavedChanges } from '../../../hooks/useUnsavedChanges.js';
 import { errorMessage } from '../../../lib/errorMessages.js';
@@ -38,6 +37,7 @@ import {
 } from '../../results/hooks/useResults.js';
 import { classSectionLabel, modeLabel, typeLabel } from '../../results/labels.js';
 import { useSchoolSettings } from '../../school/hooks/useSchool.js';
+import { useRolePaths } from '../../school/hooks/useScope.js';
 
 const TONE_SELECTED = {
   present: 'border-present-ink bg-present-soft text-present-ink',
@@ -590,6 +590,7 @@ function PublishedResults({ assessment, scale }) {
 }
 
 function AssessmentView({ assessment: a, settings }) {
+  const paths = useRolePaths();
   const published = a.status === 'published';
   const scale = published ? a.gradingScale : settings.gradingScale;
   return (
@@ -602,7 +603,7 @@ function AssessmentView({ assessment: a, settings }) {
             <StatusBadge group="publication" value={a.status} />
             {!published && (
               <Link
-                to={teacherPaths.editAssessment(a._id)}
+                to={paths.editAssessment(a._id)}
                 className={buttonClasses({ variant: 'ghost', size: 'sm' })}
               >
                 <Pencil aria-hidden="true" className="size-4" />
@@ -634,6 +635,7 @@ function AssessmentView({ assessment: a, settings }) {
 }
 
 export default function ResultEntryPage() {
+  const paths = useRolePaths();
   const { assessmentId } = useParams();
   const assessment = useAssessment(assessmentId);
   const settings = useSchoolSettings();
@@ -652,7 +654,7 @@ export default function ResultEntryPage() {
   return (
     <>
       <Link
-        to={teacherPaths.assessments()}
+        to={paths.assessments()}
         className={buttonClasses({ variant: 'ghost', size: 'sm', className: '-ml-2 mb-2' })}
       >
         <ArrowLeft aria-hidden="true" className="size-4" />

@@ -19,7 +19,6 @@ import { Select } from '../../../components/ui/Select.jsx';
 import { Skeleton } from '../../../components/ui/Skeleton.jsx';
 import { toast } from '../../../components/ui/toast.js';
 import { UnsavedChangesDialog } from '../../../components/ui/UnsavedChangesDialog.jsx';
-import { teacherPaths } from '../../../config/paths.js';
 import { useUnsavedChanges } from '../../../hooks/useUnsavedChanges.js';
 import { useZodForm } from '../../../hooks/useZodForm.js';
 import { errorMessage } from '../../../lib/errorMessages.js';
@@ -30,7 +29,8 @@ import {
   useUpdateAssessment,
 } from '../../results/hooks/useResults.js';
 import { ASSESSMENT_MODES, ASSESSMENT_TYPES } from '../../results/labels.js';
-import { useMyAssignments, useSchoolSettings } from '../../school/hooks/useSchool.js';
+import { useSchoolSettings } from '../../school/hooks/useSchool.js';
+import { useClassSectionScope, useRolePaths } from '../../school/hooks/useScope.js';
 import { classSectionValue } from '../classSection.js';
 
 const schema = z
@@ -59,6 +59,7 @@ const schema = z
   );
 
 function AssessmentForm({ assessment, classSections, session, today }) {
+  const paths = useRolePaths();
   const navigate = useNavigate();
   const editing = Boolean(assessment);
   const create = useCreateAssessment();
@@ -107,7 +108,7 @@ function AssessmentForm({ assessment, classSections, session, today }) {
       : await create.mutateAsync({ ...fields, classId, sectionId, subjectId: values.subjectId });
     allowNavigation();
     toast.success(editing ? 'Assessment updated' : 'Assessment created. Now enter the results.');
-    navigate(teacherPaths.assessment(saved?._id ?? assessment._id), { replace: !editing });
+    navigate(paths.assessment(saved?._id ?? assessment._id), { replace: !editing });
   });
 
   const onDelete = async () => {
@@ -115,7 +116,7 @@ function AssessmentForm({ assessment, classSections, session, today }) {
       await remove.mutateAsync(assessment._id);
       allowNavigation();
       toast.success('Draft deleted');
-      navigate(teacherPaths.assessments(), { replace: true });
+      navigate(paths.assessments(), { replace: true });
     } catch (error) {
       toast.error(errorMessage(error));
       setConfirmDelete(false);
@@ -209,7 +210,7 @@ function AssessmentForm({ assessment, classSections, session, today }) {
             </Button>
           )}
           <Link
-            to={editing ? teacherPaths.assessment(assessment._id) : teacherPaths.assessments()}
+            to={editing ? paths.assessment(assessment._id) : paths.assessments()}
             className={buttonClasses({ variant: 'secondary', className: 'sm:ml-auto' })}
           >
             Cancel
@@ -235,10 +236,11 @@ function AssessmentForm({ assessment, classSections, session, today }) {
 }
 
 export default function AssessmentFormPage() {
+  const paths = useRolePaths();
   const { assessmentId } = useParams();
   const editing = Boolean(assessmentId);
   const assessment = useAssessment(assessmentId);
-  const mine = useMyAssignments();
+  const mine = useClassSectionScope();
   const settings = useSchoolSettings();
 
   const loading = <Skeleton className="h-96 rounded-card" />;
@@ -248,7 +250,7 @@ export default function AssessmentFormPage() {
   return (
     <>
       <Link
-        to={editing ? teacherPaths.assessment(assessmentId) : teacherPaths.assessments()}
+        to={editing ? paths.assessment(assessmentId) : paths.assessments()}
         className={buttonClasses({ variant: 'ghost', size: 'sm', className: '-ml-2 mb-2' })}
       >
         <ArrowLeft aria-hidden="true" className="size-4" />

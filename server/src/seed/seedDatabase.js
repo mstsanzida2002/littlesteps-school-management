@@ -11,6 +11,7 @@ import { ACCOUNT_STATUS, ATTENDANCE_STATUS, ROLES } from '../config/constants.js
 import * as models from '../models/index.js';
 import { addDays, atSchoolTime, toDateKey, todaySchoolDate, weekdayOf } from '../utils/date.js';
 import { markAllApplied } from '../migrations/runner.js';
+import { absenceKey, absenceNotificationFields } from '../services/attendanceAlerts.service.js';
 import { hashPassword } from '../utils/password.js';
 import { insertInBatches, seedDemoContent } from './demoContent.js';
 import {
@@ -25,6 +26,7 @@ import {
   MOTHER_NAMES,
   SURNAMES,
   PASSWORDS,
+  PENDING_REGISTRATIONS,
   PERIOD_MINUTES,
   SCHOOL_DAYS,
   SECTION_NAMES,
@@ -39,6 +41,7 @@ const {
   AcademicSession,
   Attendance,
   Class,
+  Notification,
   Section,
   Settings,
   StudentProfile,
@@ -49,6 +52,8 @@ const {
 } = models;
 
 const ATTENDANCE_DAYS_BACK = 30;
+// Absence notifications are seeded for the most recent school days only.
+const ABSENCE_ALERT_DAYS = 7;
 
 // Deterministic PRNG (mulberry32) so every run produces the same data for the same dates.
 function createRandom(seed) {
@@ -344,6 +349,70 @@ export async function seedDatabase({ large = false, e2e = false, log = console.l
   });
   await insertInBatches(Attendance, attendanceDocs);
 
+  // --- Absence alerts for the last few school days (FR-NOT-01) --------------------
+  // One grouped notification per student per day, exactly as the live service writes them;
+  // all but the newest two days are already read.
+  const alertDays = markedDays.slice(-ABSENCE_ALERT_DAYS);
+  const recentDays = new Set(alertDays.slice(-2).map(toDateKey));
+  const absences = await Attendance.find({
+    sessionId: session._id,
+    status: ATTENDANCE_STATUS.ABSENT,
+    date: { $in: alertDays },
+  })
+    .populate('subjectId', 'name')
+    .populate('teacherId', 'name')
+    .sort({ markedAt: 1, _id: 1 })
+    .lean();
+  const studentName = new Map(studentUsers.map((u) => [String(u._id), u.name]));
+  const absenceDays = new Map();
+  for (const record of absences) {
+    const key = absenceKey(record.studentId, toDateKey(record.date));
+    if (!absenceDays.has(key)) absenceDays.set(key, []);
+    absenceDays.get(key).push(record);
+  }
+  const alertDocs = [...absenceDays.entries()].map(([dedupeKey, records]) => {
+    const { studentId, date, markedAt } = records[0];
+    const read = !recentDays.has(toDateKey(date));
+    return {
+      recipientId: studentId,
+      dedupeKey,
+      ...absenceNotificationFields({
+        studentName: studentName.get(String(studentId)),
+        date,
+        absent: records.map((r) => ({
+          attendanceId: String(r._id),
+          subjectId: String(r.subjectId._id),
+          subject: r.subjectId.name,
+          teacher: r.teacherId?.name,
+        })),
+      }),
+      isRead: read,
+      readAt: read ? markedAt : undefined,
+      createdAt: markedAt,
+      updatedAt: markedAt,
+    };
+  });
+  await insertInBatches(Notification, alertDocs);
+
+  // --- Pending self-registrations (the approvals queue) ----------------------------
+  await User.insertMany(
+    PENDING_REGISTRATIONS.map((r) => ({
+      name: r.name,
+      username: r.username,
+      passwordHash: studentHash,
+      role: ROLES.STUDENT,
+      status: ACCOUNT_STATUS.PENDING,
+      mustChangePassword: false,
+      registration: {
+        guardian: r.guardian,
+        dateOfBirth: r.dateOfBirth,
+        gender: r.gender,
+        requestedClassId: classes.find((c) => c.name === r.requestedClass)?._id,
+        note: r.note,
+      },
+    })),
+  );
+
   // --- Demo results, meetings, notices ------------------------------------------
   const demo = await seedDemoContent({
     admin,
@@ -380,6 +449,8 @@ export async function seedDatabase({ large = false, e2e = false, log = console.l
     `  Demo content       ${demo.assessments} assessments (${demo.results} results), ` +
       `${demo.meetings} meetings, ${demo.notices} notices, ${demo.notifications} notifications`,
   );
+  log(`  Absence alerts     ${alertDocs.length} (last ${alertDays.length} school days)`);
+  log(`  Pending sign-ups   ${PENDING_REGISTRATIONS.map((r) => r.username).join(', ')}`);
   log(`\n  Below ${settings.attendanceThreshold}% attendance: ${below.length} students`);
   for (const { row, percent } of below.slice(0, 10)) {
     log(

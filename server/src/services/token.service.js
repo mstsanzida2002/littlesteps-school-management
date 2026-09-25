@@ -192,6 +192,6 @@ export async function invalidateUserSessions(userId, reason) {
     { userId, revokedAt: null },
     { $set: { revokedAt: new Date(), revokedReason: reason } },
   );
-  sessionEvents.emit('user-sessions-ended', { userId: String(userId) });
+  sessionEvents.emit('user-sessions-ended', { userId: String(userId), reason });
   return user?.tokenVersion;
 }

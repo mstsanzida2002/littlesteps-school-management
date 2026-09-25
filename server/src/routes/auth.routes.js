@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { env } from '../config/env.js';
 import * as auth from '../controllers/auth.controller.js';
 import { authenticateAllowingPasswordChange } from '../middleware/auth.js';
+import { signalsDataChange } from '../middleware/dataChanged.js';
 import { createAuthLimiters } from '../middleware/rateLimiter.js';
 import { validate } from '../middleware/validate.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -40,6 +41,8 @@ export function createAuthRouter({
     router.post(
       '/register',
       limit.register,
+      // A new registration appears in the admins' approvals queue straight away.
+      signalsDataChange('registrations'),
       validate({ body: registerSchema }),
       asyncHandler(auth.register),
     );

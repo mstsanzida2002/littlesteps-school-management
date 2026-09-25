@@ -19,3 +19,24 @@ const BY_TYPE = {
 export function keysForNotification(notification) {
   return [...(BY_TYPE[notification?.type] ?? []), ['dashboard']];
 }
+
+/**
+ * "data:changed" (a refresh signal, no notification): scope → the query roots to refetch.
+ * Payloads carry ids only (classId, sectionId, assessmentId, meetingId, dates).
+ */
+const BY_SCOPE = {
+  attendance: [['attendance']],
+  results: [['results']],
+  users: [['users'], ['attendance'], ['meetings']],
+  registrations: [['users']],
+  structure: [['structure'], ['school'], ['users']],
+  assignments: [['assignments'], ['school'], ['attendance', 'today']],
+  settings: [['settings'], ['school']],
+  meetings: [['meetings']],
+  notices: [['notices']],
+};
+
+/** Query keys to invalidate for a "data:changed" payload (and every dashboard). */
+export function keysForDataChange(change) {
+  return [...(BY_SCOPE[change?.scope] ?? []), ['dashboard']];
+}

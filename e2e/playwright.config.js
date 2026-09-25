@@ -29,7 +29,16 @@ export default defineConfig({
   projects: [
     {
       name: 'e2e',
-      testIgnore: /screens\.spec\.js/,
+      testIgnore: [/screens\.spec\.js/, /admin-mutations\.spec\.js/],
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 900 } },
+    },
+    {
+      // Real saves of school-wide settings (grading scale, off days, the active school year):
+      // only after every other e2e spec has finished, one at a time.
+      name: 'admin-mutations',
+      testMatch: /admin-mutations\.spec\.js/,
+      dependencies: ['e2e'],
+      workers: 1,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 900 } },
     },
     {

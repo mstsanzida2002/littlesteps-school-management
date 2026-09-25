@@ -19,7 +19,7 @@ import {
 } from './attendanceAlerts.service.js';
 import { assertWithinBackdateLimit, emailAllowedFor } from './attendanceRules.js';
 import { recordAudit } from './audit.service.js';
-import { createOutbox, dispatchOutbox } from './notification.service.js';
+import { createOutbox, dispatchOutbox, queueDataChanged } from './notification.service.js';
 
 /** For a teacher, the set of "classId:sectionId:subjectId" they may edit. */
 async function editableKeys(actor, records) {
@@ -168,6 +168,14 @@ async function applyEdits(actor, records, { status, reason }, { partialAllowed }
         session,
         outbox: txOutbox,
         emailAllowed: changes.some((r) => emailAllowedFor(r.date)),
+      });
+    }
+    for (const r of changes) {
+      queueDataChanged(txOutbox, {
+        scope: 'attendance',
+        classId: r.classId,
+        sectionId: r.sectionId,
+        date: toDateKey(r.date),
       });
     }
     return txOutbox;

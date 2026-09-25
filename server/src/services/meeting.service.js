@@ -32,6 +32,17 @@ import { withTransaction } from '../utils/transaction.js';
 import { diffChanges, recordAudit } from './audit.service.js';
 import { classSectionLabel, requireActiveSession } from './lookup.service.js';
 import { createNotifications, createOutbox, dispatchOutbox } from './notification.service.js';
+import { notifyDataChanged } from '../realtime/dataChanged.js';
+
+/** "data:changed" for a meeting: admins and its organiser refresh (ids only). */
+function meetingChanged(meeting) {
+  notifyDataChanged({
+    scope: 'meetings',
+    meetingId: meeting._id,
+    userIds: [meeting.organizerId?._id ?? meeting.organizerId].filter(Boolean),
+  });
+  return meeting;
+}
 
 const { ObjectId } = mongoose.Types;
 const ids = (list = []) => [...new Set(list.map(String))];
@@ -325,7 +336,7 @@ export async function createMeeting(actor, data, meta = {}) {
     return txOutbox;
   });
   await dispatchOutbox(outbox);
-  return getMeeting(actor, outbox.meetingId);
+  return meetingChanged(await getMeeting(actor, outbox.meetingId));
 }
 
 /** GET /api/meetings — scoped to the viewer; ?when=upcoming|past&status= */
@@ -440,7 +451,8 @@ export async function updateMeeting(actor, id, data, meta = {}) {
     return txOutbox;
   });
   await dispatchOutbox(outbox);
-  return { meeting: await getMeeting(actor, id), added: added.length, removed: removed.length };
+  const updated = meetingChanged(await getMeeting(actor, id));
+  return { meeting: updated, added: added.length, removed: removed.length };
 }
 
 /** POST /api/meetings/:id/cancel */
@@ -484,7 +496,7 @@ export async function cancelMeeting(actor, id, { reason }, meta = {}) {
     return txOutbox;
   });
   await dispatchOutbox(outbox);
-  return getMeeting(actor, id);
+  return meetingChanged(await getMeeting(actor, id));
 }
 
 /** PATCH /api/meetings/:id/respond — invited students, until the start; changeable. */
@@ -524,6 +536,8 @@ export async function respondToMeeting(actor, id, { response, note }) {
       throw ApiError.conflict('Could not save your response; please try again.');
     }
   }
+  // The organiser's replies summary refreshes.
+  notifyDataChanged({ scope: 'meetings', meetingId: id, userIds: [meeting.organizerId] });
   return getMeeting(actor, id);
 }
 

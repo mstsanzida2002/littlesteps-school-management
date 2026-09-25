@@ -1,4 +1,4 @@
-import { createContext, useContext, useId } from 'react';
+import { createContext, useContext, useEffect, useId, useRef } from 'react';
 
 import { cn } from '../../utils/cn.js';
 
@@ -17,6 +17,19 @@ export function Tabs({ items, value, onChange, label, className, children }) {
   const baseId = useId();
   const tabId = (v) => `${baseId}-tab-${v}`;
   const panelId = (v) => `${baseId}-panel-${v}`;
+  const listRef = useRef(null);
+
+  // Keep the selected tab in view when the list scrolls sideways (only the list scrolls, never
+  // the page).
+  useEffect(() => {
+    const list = listRef.current;
+    const tab = list?.querySelector('[aria-selected="true"]');
+    if (!tab || list.scrollWidth <= list.clientWidth) return;
+    const listBox = list.getBoundingClientRect();
+    const tabBox = tab.getBoundingClientRect();
+    if (tabBox.left < listBox.left) list.scrollLeft -= listBox.left - tabBox.left + 16;
+    else if (tabBox.right > listBox.right) list.scrollLeft += tabBox.right - listBox.right + 16;
+  }, [value]);
 
   const onKeyDown = (event) => {
     const enabled = items.filter((item) => !item.disabled);
@@ -37,6 +50,7 @@ export function Tabs({ items, value, onChange, label, className, children }) {
     <TabsContext.Provider value={{ value, tabId, panelId }}>
       <div className={className}>
         <div
+          ref={listRef}
           role="tablist"
           aria-label={label}
           onKeyDown={onKeyDown}

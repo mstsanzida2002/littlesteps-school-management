@@ -12,13 +12,19 @@ import mongoose from 'mongoose';
 
 import { Notification } from '../models/index.js';
 import { sendEmail } from '../notifications/email.js';
+import { notifyDataChanged } from '../realtime/dataChanged.js';
 import { emitToUser } from '../realtime/io.js';
 import { ApiError } from '../utils/ApiError.js';
 import { paginate } from '../utils/listQuery.js';
 import { logger } from '../utils/logger.js';
 
 export function createOutbox() {
-  return { events: [], emails: [] };
+  return { events: [], emails: [], dataChanges: [] };
+}
+
+/** Queue a "data:changed" signal for after commit (realtime/dataChanged.js; ids only). */
+export function queueDataChanged(outbox, change) {
+  outbox.dataChanges.push(change);
 }
 
 /** Queue a socket event for after commit. `event`: 'notification:new' | 'notification:updated'. */
@@ -76,6 +82,7 @@ export async function dispatchOutbox(outbox) {
       emitToUser(userId, event, notification.toJSON?.() ?? notification);
     }
     await emitUnreadCounts([...new Set(outbox.events.map((e) => e.userId))]);
+    for (const change of outbox.dataChanges ?? []) notifyDataChanged(change);
   } catch (err) {
     logger.error('Real-time dispatch failed:', err);
   }

@@ -148,3 +148,12 @@ export function formatMonth(monthKey, { short = false } = {}) {
   const date = new Date(`${monthKey}-01T00:00:00.000Z`);
   return (short ? shortMonthFormatter : monthFormatter).format(date);
 }
+
+/**
+ * The real instant a school day ends in Dhaka (the next day's 00:00 +06:00), as an ISO string:
+ * "show until Thu 1 Oct" → expires at the start of Fri 2 Oct, Dhaka time.
+ */
+export function endOfSchoolDay(dateKey) {
+  const next = addDaysToKey(dateKey, 1);
+  return new Date(`${next}T00:00:00+06:00`).toISOString();
+}

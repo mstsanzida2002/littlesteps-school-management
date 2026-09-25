@@ -24,6 +24,23 @@ import { queueEmail, queueNotificationEvent } from './notification.service.js';
 const STATUS_LABEL = { present: 'Present', absent: 'Absent', late: 'Late' };
 export const absenceKey = (studentId, dateKey) => `absence:${studentId}:${dateKey}`;
 
+/**
+ * The grouped absence notification's fields for one student and day (also used by the seed, so
+ * demo alerts read exactly like live ones).
+ * absent: [{ attendanceId, subjectId, subject, teacher }]
+ */
+export function absenceNotificationFields({ studentName, date, absent }) {
+  const when = formatSchoolDateLong(date);
+  const list = absent.map((a) => (a.teacher ? `${a.subject} (${a.teacher})` : a.subject));
+  return {
+    type: 'absence',
+    title: `Absent on ${when}`,
+    message: `${studentName} was marked absent on ${when} in: ${list.join(', ')}.`,
+    data: { date: toDateKey(date), subjects: absent, corrected: false },
+    relatedEntity: { kind: 'Attendance', id: absent[0].attendanceId },
+  };
+}
+
 const sameSubjects = (a = [], b = []) =>
   a.length === b.length && a.every((s, i) => s.attendanceId === b[i].attendanceId);
 
@@ -66,14 +83,7 @@ export async function syncAbsenceNotification({
   const student = await User.findById(studentId).select('name').session(session).lean();
 
   if (absent.length) {
-    const list = absent.map((a) => (a.teacher ? `${a.subject} (${a.teacher})` : a.subject));
-    const fields = {
-      type: 'absence',
-      title: `Absent on ${when}`,
-      message: `${student.name} was marked absent on ${when} in: ${list.join(', ')}.`,
-      data: { date: dateKey, subjects: absent, corrected: false },
-      relatedEntity: { kind: 'Attendance', id: absent[0].attendanceId },
-    };
+    const fields = absenceNotificationFields({ studentName: student.name, date, absent });
     if (!existing) {
       const [created] = await Notification.create(
         [{ recipientId: studentId, dedupeKey, ...fields }],

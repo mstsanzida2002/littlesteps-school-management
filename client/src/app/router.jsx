@@ -45,6 +45,20 @@ const MeetingsPage = lazy(() => import('../features/teacher/pages/MeetingsPage.j
 const MeetingFormPage = lazy(() => import('../features/teacher/pages/MeetingFormPage.jsx'));
 const MeetingDetailPage = lazy(() => import('../features/teacher/pages/MeetingDetailPage.jsx'));
 
+// Admin screens (the shared ones reuse the teacher pages, role-aware)
+const UsersPage = lazy(() => import('../features/admin/pages/UsersPage.jsx'));
+const UserCreatePage = lazy(() => import('../features/admin/pages/UserCreatePage.jsx'));
+const UserDetailPage = lazy(() => import('../features/admin/pages/UserDetailPage.jsx'));
+const UserEditPage = lazy(() => import('../features/admin/pages/UserEditPage.jsx'));
+const ApprovalsPage = lazy(() => import('../features/admin/pages/ApprovalsPage.jsx'));
+const StructurePage = lazy(() => import('../features/admin/pages/StructurePage.jsx'));
+const AssignmentsPage = lazy(() => import('../features/admin/pages/AssignmentsPage.jsx'));
+const SettingsPage = lazy(() => import('../features/admin/pages/SettingsPage.jsx'));
+const AdminAttendancePage = lazy(() => import('../features/admin/pages/AdminAttendancePage.jsx'));
+const AdminNoticesPage = lazy(() => import('../features/admin/pages/AdminNoticesPage.jsx'));
+const NoticeFormPage = lazy(() => import('../features/admin/pages/NoticeFormPage.jsx'));
+const AuditLogPage = lazy(() => import('../features/admin/pages/AuditLogPage.jsx'));
+
 // Student (guardian) screens
 const ChildAttendancePage = lazy(() => import('../features/student/pages/ChildAttendancePage.jsx'));
 const ChildResultsPage = lazy(() => import('../features/student/pages/ChildResultsPage.jsx'));
@@ -110,6 +124,32 @@ const teacherPages = [
   { path: 'notices', element: <NoticesPage /> },
 ];
 
+const adminPages = [
+  { index: true, element: <AdminDashboardPage /> },
+  { path: 'users', element: <UsersPage /> },
+  { path: 'users/new', element: <UserCreatePage /> },
+  { path: 'users/:userId', element: <UserDetailPage /> },
+  { path: 'users/:userId/edit', element: <UserEditPage /> },
+  { path: 'registrations', element: <ApprovalsPage /> },
+  { path: 'classes', element: <StructurePage /> },
+  { path: 'assignments', element: <AssignmentsPage /> },
+  { path: 'attendance', element: <AdminAttendancePage /> },
+  { path: 'students/:studentId/attendance', element: <StudentAttendancePage /> },
+  { path: 'results', element: <AssessmentsPage /> },
+  { path: 'results/new', element: <AssessmentFormPage /> },
+  { path: 'results/:assessmentId', element: <ResultEntryPage /> },
+  { path: 'results/:assessmentId/edit', element: <AssessmentFormPage /> },
+  { path: 'meetings', element: <MeetingsPage /> },
+  { path: 'meetings/new', element: <MeetingFormPage /> },
+  { path: 'meetings/:meetingId', element: <MeetingDetailPage /> },
+  { path: 'meetings/:meetingId/edit', element: <MeetingFormPage /> },
+  { path: 'notices', element: <AdminNoticesPage /> },
+  { path: 'notices/new', element: <NoticeFormPage /> },
+  { path: 'notices/:noticeId/edit', element: <NoticeFormPage /> },
+  { path: 'settings', element: <SettingsPage /> },
+  { path: 'audit-log', element: <AuditLogPage /> },
+];
+
 const studentPages = [
   { index: true, element: <StudentDashboardPage /> },
   { path: 'attendance', element: <ChildAttendancePage /> },
@@ -142,7 +182,7 @@ export const router = createBrowserRouter([
             element: <AuthLayout />,
             children: [{ path: ROUTES.CHANGE_PASSWORD, element: <ChangePasswordPage /> }],
           },
-          roleArea(ROLES.ADMIN, ROUTES.ADMIN, [{ index: true, element: <AdminDashboardPage /> }]),
+          roleArea(ROLES.ADMIN, ROUTES.ADMIN, adminPages),
           roleArea(ROLES.TEACHER, ROUTES.TEACHER, teacherPages),
           roleArea(ROLES.STUDENT, ROUTES.STUDENT, studentPages),
         ],

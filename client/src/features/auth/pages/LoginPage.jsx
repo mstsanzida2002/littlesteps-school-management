@@ -1,5 +1,5 @@
 import { LogIn, User, UserRound, X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, useLocation, useSearchParams } from 'react-router';
 
 import { Alert } from '../../../components/ui/Alert.jsx';
@@ -18,6 +18,8 @@ import { childName } from '../../../utils/names.js';
 import { text as studentText } from '../../student/text/index.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { useLogin } from '../hooks/useLogin.js';
+import { clearSessionEndedReason, sessionEndedReason } from '../session.js';
+import { text as authText } from '../text/index.js';
 import { loginSchema } from '../schemas.js';
 
 /** Where to go after sign-in: the page they wanted, if their role may see it; else their home. */
@@ -93,6 +95,9 @@ export default function LoginPage() {
   const form = useZodForm(loginSchema, { defaultValues: { identifier: '', password: '' } });
   const { errors, isSubmitting } = form.formState;
   const [accounts, setAccounts] = useState(rememberedAccounts);
+  // Signed out by the school (socket "session:ended"): say why, once.
+  const [ended] = useState(() => authText.sessionEnded[sessionEndedReason()] ?? null);
+  useEffect(() => clearSessionEndedReason(), []);
 
   const onSubmit = async (values) => {
     const signedIn = await loginMutation.mutateAsync(values);
@@ -119,6 +124,12 @@ export default function LoginPage() {
       <PageTitle title="Log in" />
       <h1 className="text-2xl font-bold">Log in</h1>
       <p className="mt-1 text-muted">Parents and guardians use the student&apos;s account.</p>
+
+      {ended && (
+        <Alert tone="warning" title={ended.title} className="mt-4">
+          {ended.body}
+        </Alert>
+      )}
 
       {accounts.length > 0 && (
         <RememberedChildren

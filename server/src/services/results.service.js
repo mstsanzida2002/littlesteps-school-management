@@ -30,13 +30,28 @@ import {
   requireActiveSession,
   requireSectionInClass,
 } from './lookup.service.js';
-import { createNotifications, createOutbox, dispatchOutbox } from './notification.service.js';
+import {
+  createNotifications,
+  createOutbox,
+  dispatchOutbox,
+  queueDataChanged,
+} from './notification.service.js';
+import { notifyDataChanged } from '../realtime/dataChanged.js';
 
 const POPULATE = [
   { path: 'subjectId', select: 'name code' },
   { path: 'classId', select: 'name order' },
   { path: 'sectionId', select: 'name' },
 ];
+/** "data:changed" for an assessment's class-section (ids only; co-teachers and admins refresh). */
+const idOf = (value) => value?._id ?? value;
+const resultsChange = (assessment) => ({
+  scope: 'results',
+  assessmentId: assessment._id,
+  classId: idOf(assessment.classId),
+  sectionId: idOf(assessment.sectionId),
+});
+
 const ATTENDANCE_LABEL = { absent: 'Absent', excused: 'Excused' };
 
 // ---------------------------------------------------------------------------
@@ -203,6 +218,7 @@ export async function createAssessment(actor, data, meta = {}) {
     after: { ...assessment.toObject(), classSection: classSectionLabel(cls, section) },
     meta,
   });
+  notifyDataChanged(resultsChange(assessment));
   return getAssessment(actor, assessment._id);
 }
 
@@ -341,6 +357,7 @@ export async function updateAssessment(actor, id, changes, meta = {}) {
       { session },
     );
   });
+  notifyDataChanged(resultsChange(assessment));
   return getAssessment(actor, id);
 }
 
@@ -364,6 +381,7 @@ export async function deleteAssessment(actor, id, meta = {}) {
       { session },
     );
   });
+  notifyDataChanged(resultsChange(assessment));
 }
 
 // ---------------------------------------------------------------------------
@@ -424,6 +442,7 @@ export async function saveDraftResults(actor, assessmentId, entries, meta = {}) 
     );
   });
   const entered = await Result.countDocuments({ assessmentId });
+  notifyDataChanged(resultsChange(assessment));
   return { saved: ops.length, entered, enrolled: roster.length };
 }
 
@@ -550,6 +569,7 @@ export async function publishAssessment(actor, id, meta = {}) {
       },
       { session },
     );
+    queueDataChanged(txOutbox, resultsChange(assessment));
     return txOutbox;
   });
   await dispatchOutbox(outbox);
@@ -642,6 +662,7 @@ export async function editPublishedResult(actor, resultId, { reason, ...changes 
       ],
       { session, outbox: txOutbox },
     );
+    queueDataChanged(txOutbox, resultsChange(assessment));
     return txOutbox;
   });
   await dispatchOutbox(outbox);

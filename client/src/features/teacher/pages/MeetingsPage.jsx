@@ -10,11 +10,11 @@ import { PageHeader } from '../../../components/ui/PageHeader.jsx';
 import { Pagination } from '../../../components/ui/Pagination.jsx';
 import { SkeletonCard } from '../../../components/ui/Skeleton.jsx';
 import { TabPanel, Tabs } from '../../../components/ui/Tabs.jsx';
-import { teacherPaths } from '../../../config/paths.js';
 import { formatDateTime } from '../../../utils/date.js';
 import { plural } from '../../../utils/format.js';
 import { useAuth } from '../../auth/hooks/useAuth.js';
 import { useMeetings } from '../../meetings/hooks/useMeetings.js';
+import { useRolePaths } from '../../school/hooks/useScope.js';
 import { meetingState, meetingTypeLabel } from '../../meetings/labels.js';
 
 const TABS = [
@@ -23,6 +23,7 @@ const TABS = [
 ];
 
 function MeetingCard({ meeting, userId }) {
+  const paths = useRolePaths();
   const Where = meeting.onlineLink ? Video : MapPin;
   const mine = String(meeting.organizerId?._id) === String(userId);
   const invitees = meeting.inviteeStudentIds?.length;
@@ -30,7 +31,7 @@ function MeetingCard({ meeting, userId }) {
   return (
     <li>
       <Link
-        to={teacherPaths.meeting(meeting._id)}
+        to={paths.meeting(meeting._id)}
         className="flex flex-col gap-2 rounded-card border border-line bg-surface p-4 shadow-card transition-colors hover:border-brand-300 sm:flex-row sm:items-center sm:gap-4"
       >
         <div className="min-w-0 flex-1">
@@ -60,13 +61,14 @@ function MeetingCard({ meeting, userId }) {
 }
 
 export default function MeetingsPage() {
+  const paths = useRolePaths();
   const [params, setParams] = useSearchParams();
   const { user } = useAuth();
   const when = params.get('when') === 'past' ? 'past' : 'upcoming';
   const page = Number(params.get('page') ?? 1);
   const list = useMeetings({ when, page, limit: 10 });
   const newButton = (
-    <Link to={teacherPaths.newMeeting()} className={buttonClasses()}>
+    <Link to={paths.newMeeting()} className={buttonClasses()}>
       <Plus aria-hidden="true" className="size-5" />
       New meeting
     </Link>

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { ERROR_CODES } from '../../../server/src/config/constants.js';
 import { notificationLink, teacherPaths } from '../config/paths.js';
 import { errorMessage, friendlyError, KNOWN_ERROR_CODES } from '../lib/errorMessages.js';
-import { keysForNotification } from '../lib/realtimeInvalidation.js';
+import { keysForDataChange, keysForNotification } from '../lib/realtimeInvalidation.js';
 import { dayChipLabel, isOffDay, markableSchoolDays } from '../utils/schoolDays.js';
 
 describe('error messages', () => {
@@ -58,6 +58,33 @@ describe('live updates', () => {
       ['dashboard'],
     ]);
     expect(keysForNotification({ type: 'something_new' })).toEqual([['dashboard']]);
+  });
+
+  it('refreshes the scope of a "data:changed" signal (and every dashboard)', () => {
+    expect(keysForDataChange({ scope: 'attendance', classId: 'c', sectionId: 's' })).toEqual([
+      ['attendance'],
+      ['dashboard'],
+    ]);
+    expect(keysForDataChange({ scope: 'settings' })).toEqual([
+      ['settings'],
+      ['school'],
+      ['dashboard'],
+    ]);
+    // Every server scope is known (server/src/realtime/dataChanged.js DATA_SCOPES).
+    for (const scope of [
+      'attendance',
+      'results',
+      'users',
+      'registrations',
+      'structure',
+      'assignments',
+      'settings',
+      'meetings',
+      'notices',
+    ]) {
+      expect(keysForDataChange({ scope }).length).toBeGreaterThan(1);
+    }
+    expect(keysForDataChange({ scope: 'unknown' })).toEqual([['dashboard']]);
   });
 });
 
