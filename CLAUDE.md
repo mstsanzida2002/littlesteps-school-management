@@ -436,13 +436,46 @@ The account belongs to the child but is used by a parent or guardian, usually on
     while the session check runs. On `/student`, `main.jsx` starts downloading the home page's
     code during the session check, and the shell starts the dashboard request as the page's code
     loads (`usePrefetchDashboard`).
+  - **The shell must not be blocked by CSS.** Vite's production build injects the compiled
+    stylesheet as a render-blocking `<link rel="stylesheet">` in `<head>` — that blocks first
+    paint of the _whole document_, including the inline boot shell below it, until the CSS
+    bundle downloads. On a slow connection this defeated the shell's purpose: first paint was
+    still gated on a network round trip for CSS the shell doesn't even use (it's styled by its
+    own inline `<style>`). `client/vite.config.js`'s `deferStylesheets()` plugin
+    (`transformIndexHtml`, build-only) rewrites the injected link(s) into the standard
+    preload-then-swap pattern (`rel="preload" as="style"` with `onload` flipping it to
+    `rel="stylesheet"`, plus a `<noscript>` fallback), so the real app's CSS still applies once
+    it arrives, but no longer blocks the shell's paint.
   - Guardian pages never load Recharts (`MonthBars` is plain CSS). Vercel serves `/assets`
     immutable (`vercel.json`), so a repeat visit downloads no JavaScript.
-  - Measured (HTTP/2, first paint / skeleton / content): cold (empty cache) 5.0–5.2 / 10.8–11.1 /
-    12.7–13.0 s, warm (repeat visit) 2.1 / 4.5–4.6 / 6.5–6.9 s. A repeat visit is near the floor:
-    the page, the session check and the data are one round trip each. The test asserts budgets
-    with ~30% headroom and exactly one refresh, one dashboard and at most one unread-count
-    request.
+  - **Measured** (HTTP/2; `e2e/perf/dashboard.perf.spec.js`, shell / first paint / skeleton /
+    content, ms over the wire):
+
+    | Run                  | shell visible | first paint (FCP) |    skeleton |     content |
+    | -------------------- | ------------: | ----------------: | ----------: | ----------: |
+    | cold, before the fix |           n/a |         5.0–5.2 s | 10.8–11.1 s | 12.7–13.0 s |
+    | cold, after the fix  |     2.1–2.2 s |         2.1–2.2 s | 11.1–11.4 s | 13.0–13.3 s |
+    | warm, before the fix |           n/a |             2.1 s |   4.5–4.6 s |   6.5–6.9 s |
+    | warm, after the fix  |     4.5–4.7 s |         2.1–2.2 s |   4.5–4.7 s |   6.4–6.9 s |
+
+    The fix only targets first paint: on a cold visit it drops from ~5.1 s to ~2.1 s — the
+    theoretical floor for one round trip at 2 s latency — because the shell no longer waits on
+    CSS. Skeleton/content are unaffected (as expected): they're bound by how long the JS bundle
+    takes to download, not by CSS.
+
+  - **"shell visible" is measured directly** (`waitForShellOrApp` in the perf spec: the boot
+    shell's own DOM, not just the browser's native FCP timestamp), because on a _warm_ visit
+    every asset can be cache-hit fast enough that React mounts the real app before the static
+    shell would even be noticed — so the metric is "first thing besides blank white", racing the
+    boot shell against the app's own loading state, and either winning is a pass. That's also why
+    warm "shell visible" (~4.5 s) is higher than warm FCP (~2.1 s) and matches warm "skeleton"
+    almost exactly: on warm visits the real app wins that race, gated on the `/api/auth/refresh`
+    round trip before anything can render, same as skeleton. The stricter check — shell visible
+    must land within 1.5 s of FCP — only applies to the **cold** run, where nothing is cached yet
+    so the static shell is guaranteed to be what FCP fires on; a regression that reintroduces a
+    render-blocking resource before it would show up there.
+  - The test asserts budgets with headroom and exactly one refresh, one dashboard and at most one
+    unread-count request.
 
 ## Admin screens (FR-ADM-01…06, 10, 11)
 
@@ -1124,6 +1157,18 @@ refreshIpMax } })`.
   `notices-dashboards.test.js`. `apiAs(user)` has `get/post/patch/put/delete`.
 - When checking notifications, filter by type, title or `data`, not by position; the order
   documents come back in isn't guaranteed.
+- **The seed's absence-alert notifications** (last `ABSENCE_ALERT_DAYS` school days, "Databases &
+  seed" above) mean a guardian who already has attendance below 75% carries ambient `Absent on …`
+  notifications into every test. A generic `getByRole('button', { name: /Absent on/ })` count can
+  therefore see more than the one a test just created — scope the match to that day's own label
+  (`dayLabel(day)` from `tests/helpers.js`), as `attendance.spec.js` and `realtime.spec.js` do.
+- **The seed's marks are deterministic but not fixed**: `seedDatabase.js`'s `random` is a seeded
+  PRNG, but earlier steps that consume it (e.g. how many of the last 30 real days are school
+  days) shift with the real calendar date, so a specific student's seeded mark can differ from
+  one day to the next. Don't assert a test-written mark differs from a hardcoded prior value
+  (`results.spec.js`'s "published result changes only with a reason" reads the current value
+  first and picks a new one guaranteed to differ from it, rather than assuming it isn't already
+  24).
 - **Client** (`client/src/__tests__`, `npm test -w client`): pure logic in a node environment
   (statuses, server-error mapping, dates, chart summaries, schemas, pagination). Components are
   checked in the browser via `/styleguide`.

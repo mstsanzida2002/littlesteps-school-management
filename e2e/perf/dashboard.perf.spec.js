@@ -10,18 +10,55 @@ const SLOW_3G = {
   uploadThroughput: 50_000,
 };
 
-// Budgets (ms from navigation start) with ~30% headroom over measured runs (HTTP/2):
-//   cold 5.0 / 10.8 / 12.7 s, warm 2.1 / 4.6 / 6.5 s (first paint / skeleton / content).
+// Budgets (ms from navigation start) with headroom over measured runs (HTTP/2). See CLAUDE.md,
+// "Slow networks", for the measured numbers these head room over.
 // At 2 s per round trip, a repeat visit is near the floor: the page, the session check and
-// the dashboard request are one round trip each. See CLAUDE.md, "Guardian screens".
+// the dashboard request are one round trip each.
+// shellVisible/firstPaint are latency-bound (one round trip for the HTML response) and have
+// little natural variance, so a regression that reintroduces a render-blocking resource before
+// first paint (what these two exist to catch) shows up clearly even with modest headroom.
+// skeleton/content are bound by how long the JS bundle takes to download (cold) or by the
+// auth-refresh round trip before the app can render anything (warm) — unrelated to first paint —
+// so they keep the same generous headroom as before this file added shellVisible.
 const BUDGET = {
-  cold: { firstPaint: 7_000, skeleton: 14_000, content: 16_500 },
-  warm: { firstPaint: 3_000, skeleton: 6_000, content: 8_500 },
+  cold: { shellVisible: 4_000, firstPaint: 4_000, skeleton: 14_000, content: 16_500 },
+  warm: { shellVisible: 6_000, firstPaint: 3_000, skeleton: 6_000, content: 8_500 },
 };
 
 const GUARDIAN = { identifier: 'pg-a-04', password: 'Student@1234' };
 
-/** Visit /student under the throttle; times to first paint, the skeleton and the content. */
+/**
+ * Elapsed ms until *something* is visible besides a blank page: the static boot shell
+ * (index.html's inline `<style>`, no CSS/JS fetch needed), or — on a warm/cached visit, where
+ * every asset can be served from the disk cache fast enough that React mounts the real app
+ * before the static shell would even be noticed — the app's own loading state. Either is a
+ * pass: the point is no unstyled blank screen, not that the static shell specifically wins.
+ */
+async function waitForShellOrApp(page, start) {
+  while (Date.now() - start < 30_000) {
+    const [shellCount, appVisible] = await Promise.all([
+      page.locator('.boot-card').count(),
+      page
+        .getByLabel('Loading the home page')
+        .isVisible()
+        .catch(() => false),
+    ]);
+    if (shellCount > 0 || appVisible) return Date.now() - start;
+    await page.waitForTimeout(20);
+  }
+  throw new Error('Neither the boot shell nor the app became visible within 30s');
+}
+
+/**
+ * Visit /student under the throttle; times to the static shell (or, if the app beats it there —
+ * see waitForShellOrApp), first paint, the React skeleton and the content.
+ *
+ * "shellVisible" is measured directly (the DOM), rather than only trusting the browser's native
+ * first-contentful-paint timestamp, so a regression that makes FCP fire on *something other than
+ * the shell* (a render-blocking resource delaying the shell but not simple enough to keep FCP
+ * from firing on some other early paint) is caught by comparing the two on the cold run below,
+ * instead of being hidden by them drifting together.
+ */
 async function measure(page, cdp, { cold }) {
   if (cold) await cdp.send('Network.clearBrowserCache');
   const requests = [];
@@ -45,6 +82,7 @@ async function measure(page, cdp, { cold }) {
 
   const start = Date.now();
   await page.goto('/student', { waitUntil: 'commit' });
+  const shellVisible = await waitForShellOrApp(page, start);
   await expect(page.getByLabel('Loading the home page')).toBeVisible();
   const skeleton = Date.now() - start;
   await expect(page.getByRole('img', { name: /^Attendance \d/ })).toBeVisible();
@@ -57,6 +95,7 @@ async function measure(page, cdp, { cold }) {
   cdp.off('Network.loadingFinished', onFinished);
   const all = [...responses.values()];
   return {
+    shellVisible,
     firstPaint: Math.round(firstPaint),
     skeleton,
     content,
@@ -86,9 +125,9 @@ test('home page on slow 3G: skeleton first, one data request, no chart library',
   const cold = await measure(page, cdp, { cold: true });
   const warm = await measure(page, cdp, { cold: false });
 
-  const report = `slow 3G (${cold.protocol})  first paint / skeleton / content (ms), over the wire
-  cold (empty cache): ${cold.firstPaint} / ${cold.skeleton} / ${cold.content}, ${cold.kb} KB
-  warm (repeat visit): ${warm.firstPaint} / ${warm.skeleton} / ${warm.content}, ${warm.kb} KB`;
+  const report = `slow 3G (${cold.protocol})  shell / first paint / skeleton / content (ms), over the wire
+  cold (empty cache): ${cold.shellVisible} / ${cold.firstPaint} / ${cold.skeleton} / ${cold.content}, ${cold.kb} KB
+  warm (repeat visit): ${warm.shellVisible} / ${warm.firstPaint} / ${warm.skeleton} / ${warm.content}, ${warm.kb} KB`;
   console.log(report);
   test.info().annotations.push({ type: 'timings', description: report });
 
@@ -113,8 +152,15 @@ test('home page on slow 3G: skeleton first, one data request, no chart library',
   expect(warm.downloadedJs).toEqual([]);
 
   for (const [name, run] of Object.entries({ cold, warm })) {
+    expect(run.shellVisible, `${name} shell visible`).toBeLessThan(BUDGET[name].shellVisible);
     expect(run.firstPaint, `${name} first paint`).toBeLessThan(BUDGET[name].firstPaint);
     expect(run.skeleton, `${name} skeleton`).toBeLessThan(BUDGET[name].skeleton);
     expect(run.content, `${name} content`).toBeLessThan(BUDGET[name].content);
   }
+  // On a cold visit, "shellVisible" is the static shell (nothing is cached yet for the app to
+  // beat it with), so it should land right on FCP — if it's meaningfully behind, a
+  // render-blocking resource is delaying the shell specifically, not just both numbers moving
+  // together. (On a warm visit the app can legitimately win that race — see waitForShellOrApp —
+  // so this check doesn't apply there.)
+  expect(cold.shellVisible - cold.firstPaint, 'cold shell vs FCP gap').toBeLessThan(1500);
 });

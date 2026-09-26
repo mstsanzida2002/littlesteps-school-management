@@ -1,7 +1,7 @@
 // Teacher attendance flows (FR-TCH-03…07, FR-NOT-01). Owns Playgroup (A and B) and farhana.akter.
 import { expect, test } from '@playwright/test';
 
-import { apiAs, login, studentLogin, trackPageErrors, USERS } from './helpers.js';
+import { apiAs, dayLabel, login, studentLogin, trackPageErrors, USERS } from './helpers.js';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -69,7 +69,10 @@ test('take attendance with one absent → the guardian gets one notification', a
   const guardianPage = await guardianContext.newPage();
   await login(guardianPage, studentLogin(ABSENT.username));
   await guardianPage.goto('/student/notifications');
-  await expect(guardianPage.getByRole('button', { name: /Absent on/ })).toHaveCount(1);
+  // The seed has absence alerts for recent days too; only this day's alert is the one to watch.
+  await expect(
+    guardianPage.getByRole('button', { name: new RegExp(`Absent on ${dayLabel(school.day)}`) }),
+  ).toHaveCount(1);
   await guardianContext.close();
   expect(errors).toEqual([]);
 });

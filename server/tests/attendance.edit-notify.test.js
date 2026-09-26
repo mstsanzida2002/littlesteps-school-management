@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   Attendance,
@@ -25,6 +25,7 @@ import { apiAs } from './helpers/school.js';
 
 beforeAll(startTestDB);
 afterEach(async () => {
+  vi.useRealTimers();
   setEmailProvider(null);
   await clearTestDB();
 });
@@ -97,6 +98,12 @@ describe('grouped absence notification (one per student per day)', () => {
   });
 
   it('emails the guardian once per day, only on creation, only if they have an email', async () => {
+    // Anchor "today" to the marked day for the email's 1-day-old cutoff (emailAllowedFor):
+    // school.day is "the most recent school day", which over a Friday+Saturday weekend can be
+    // up to 2 real days before an actual Saturday — outside that window through no fault of the
+    // marking itself. Faking only Date (not timers) keeps settle()'s setTimeout real.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(`${school.dayKey}T12:00:00Z`));
     await farhana.post('/attendance', absentAyaan());
     await nasrin.post('/attendance', absentAyaan());
     await settle();

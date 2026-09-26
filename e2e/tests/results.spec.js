@@ -67,11 +67,17 @@ test('a published result changes only with a reason', async ({ page }) => {
   const firstRow = page.getByRole('row').nth(1);
   await firstRow.getByRole('button', { name: /^Change .*'s result$/ }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByLabel(/Marks \(out of 25\)/).fill('24');
+  const marksInput = dialog.getByLabel(/Marks \(out of 25\)/);
+  // The seed's marks are randomised (deterministically, but the exact value still shifts with
+  // the real date some steps earlier consume — see server/src/seed/seedDatabase.js), so pick a
+  // value guaranteed to differ from whatever is currently there, rather than assuming it's not
+  // already 24.
+  const next = (await marksInput.inputValue()) === '24' ? '23' : '24';
+  await marksInput.fill(next);
   await dialog.getByRole('button', { name: 'Save change' }).click();
   await expect(dialog.getByText('Give a reason (at least 3 characters)')).toBeVisible();
   await dialog.getByLabel('Reason for the change').fill('Marking mistake on question 3');
   await dialog.getByRole('button', { name: 'Save change' }).click();
   await expect(dialog).toBeHidden();
-  await expect(firstRow).toContainText('24 / 25');
+  await expect(firstRow).toContainText(`${next} / 25`);
 });
