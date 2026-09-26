@@ -599,6 +599,12 @@ on the login route.
 - A light header: today's Dhaka date, name and role (phones: whose account this is, because
   siblings share a phone), the bell and log out. Safe-area insets throughout.
 - Page titles are the page's own `<h1>` (PageHeader), not repeated in the header.
+- **Footer** (`components/layout/Footer.jsx`): the mark, "LittleSteps" and the year, deliberately
+  plain. Shared by every layout — `PublicLayout`, `AuthLayout` (login, change password) and
+  `DashboardLayout` — so it's one component, not a per-layout copy. In `DashboardLayout` it sits
+  after `<main>` inside the scrollable column, not inside `<main>` itself, and the column (not
+  `<main>` or the footer individually) carries the bottom padding that clears the fixed
+  `BottomNav` on phones, so the footer never ends up hidden behind it.
 
 **Styleguide**: `/styleguide`, only when `import.meta.env.DEV` (the route and its chunk are
 dropped from production builds). Add every new component and state there, with Bangla text.

@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router';
 
 import { AppHeader } from '../components/layout/AppHeader.jsx';
 import { BottomNav } from '../components/layout/BottomNav.jsx';
+import { Footer } from '../components/layout/Footer.jsx';
 import { MoreSheet } from '../components/layout/MoreSheet.jsx';
 import { activeNavItem } from '../components/layout/navMatch.js';
 import { Sidebar } from '../components/layout/Sidebar.jsx';
@@ -100,15 +101,20 @@ export default function DashboardLayout({ role }) {
           switchChild={switchChild}
           loggingOut={loggingOut}
         />
-        <main
-          id="main"
-          tabIndex={-1}
-          className="mx-auto w-full max-w-6xl flex-1 px-4 pt-5 pb-[calc(6rem+env(safe-area-inset-bottom))] focus:outline-none sm:px-6 lg:px-8 lg:pb-10"
-        >
-          <Suspense fallback={<PageSkeleton />}>
-            <Outlet />
-          </Suspense>
-        </main>
+        {/* The bottom padding here (not on <main> or <Footer> individually) clears the fixed
+            BottomNav on phones, so the footer isn't hidden behind it. */}
+        <div className="flex flex-1 flex-col pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-0">
+          <main
+            id="main"
+            tabIndex={-1}
+            className="mx-auto w-full max-w-6xl flex-1 px-4 pt-5 pb-8 focus:outline-none sm:px-6 lg:px-8"
+          >
+            <Suspense fallback={<PageSkeleton />}>
+              <Outlet />
+            </Suspense>
+          </main>
+          <Footer />
+        </div>
       </div>
 
       <BottomNav

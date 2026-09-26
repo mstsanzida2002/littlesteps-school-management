@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { Link, Outlet } from 'react-router';
 
 import { LogoLink } from '../components/brand/Logo.jsx';
+import { Footer } from '../components/layout/Footer.jsx';
 import { buttonClasses } from '../components/ui/buttonStyles.js';
 import { Spinner } from '../components/ui/Spinner.jsx';
 import { ROLE_HOME, ROUTES } from '../config/constants.js';
@@ -26,6 +27,7 @@ export default function PublicLayout() {
           <Outlet />
         </Suspense>
       </main>
+      <Footer />
     </div>
   );
 }
